@@ -632,6 +632,16 @@ function setupIPC() {
     clipboardPipeline.setOptions({ pause: !!config.pauseCapture, skipSensitive: config.skipSensitive !== false })
     return { ok: true }
   })
+
+  // 关于 / 更新
+  ipcMain.handle('app:getVersion', () => app.getVersion())
+  ipcMain.handle('app:checkUpdate', () => {
+    if (autoUpdater) {
+      autoUpdater.checkForUpdates().catch(() => {})
+      return { ok: true }
+    }
+    return { ok: false, error: '自动更新不可用' }
+  })
 }
 
 // ====== Event Bus Wiring ======

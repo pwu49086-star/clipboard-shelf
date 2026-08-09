@@ -1009,6 +1009,25 @@ mark.hl {
 }
 .setting-btn.danger { color: var(--color-danger) }
 
+/* ====== About ====== */
+.about-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0;
+}
+.about-line { font-size: 14px; color: var(--color-text) }
+.about-version {
+  font-size: 13px;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  border-radius: 6px;
+  padding: 1px 7px;
+  margin-left: 4px;
+}
+.about-link { font-size: 13px; color: var(--color-primary); text-decoration: none }
+.about-link:hover { text-decoration: underline }
+
 /* ====== Note reminders + Markdown ====== */
 .note-reminder-row {
   display: flex;

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BarChart3, Lock } from 'lucide-react'
+import { BarChart3, Info, Lock } from 'lucide-react'
 
 export default function SettingsPanel({ onBack }) {
   const [autoStart, setAutoStart] = useState(false)
@@ -33,12 +33,15 @@ export default function SettingsPanel({ onBack }) {
   const [newPw, setNewPw] = useState('')
   const [newPw2, setNewPw2] = useState('')
   const [oldPw, setOldPw] = useState('')
+  const [version, setVersion] = useState('')
+  const [updateMsg, setUpdateMsg] = useState('')
 
   useEffect(() => {
     if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
     if (window.api?.statsOverview) window.api.statsOverview().then(setStats).catch(() => {})
     if (window.api?.encryptionGetStatus) window.api.encryptionGetStatus().then(setEnc).catch(() => {})
     if (window.api?.getCaptureOptions) window.api.getCaptureOptions().then(setCapOpts).catch(() => {})
+    if (window.api?.getVersion) window.api.getVersion().then(setVersion).catch(() => {})
   }, [])
 
   const startCapture = (key) => { setCaptureKey(key); setHotkeyMsg('请按下新快捷键…') }
@@ -76,6 +79,13 @@ export default function SettingsPanel({ onBack }) {
     const n = { ...capOpts, [k]: v }
     setCapOpts(n)
     await window.api.setCaptureOptions(n)
+  }
+
+  const checkUpdate = async () => {
+    setUpdateMsg('正在检查…')
+    const r = await window.api.checkUpdate()
+    if (!r || !r.ok) setUpdateMsg((r && r.error) || '检查失败')
+    setTimeout(() => setUpdateMsg(''), 4000)
   }
 
   useEffect(() => {
@@ -239,6 +249,15 @@ export default function SettingsPanel({ onBack }) {
               <div className="stat-item"><span className="stat-value">{stats.backups}</span><span className="stat-label">备份</span></div>
             </div>
           ) : <div className="setting-hint">加载中…</div>}
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row"><div className="setting-label"><span className="setting-name"><Info size={14} style={{marginRight:6}} />关于</span></div></div>
+          <div className="about-block">
+            <div className="about-line">Clipboard Shelf <span className="about-version">v{version || '…'}</span></div>
+            <a className="about-link" href="https://github.com/pwu49086-star/clipboard-shelf" target="_blank" rel="noreferrer">GitHub 仓库</a>
+            <button className="setting-btn" onClick={checkUpdate}>{updateMsg || '检查更新'}</button>
+          </div>
         </div>
 
         <div className="setting-group">

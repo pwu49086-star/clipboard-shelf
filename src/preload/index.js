@@ -72,6 +72,10 @@ contextBridge.exposeInMainWorld('api', {
   getCaptureOptions: () => ipcRenderer.invoke('settings:getCaptureOptions'),
   setCaptureOptions: (opts) => ipcRenderer.invoke('settings:setCaptureOptions', opts),
 
+  // 关于 / 更新
+  getVersion: () => ipcRenderer.invoke('app:getVersion'),
+  checkUpdate: () => ipcRenderer.invoke('app:checkUpdate'),
+
   // 数据统计
   statsOverview: () => ipcRenderer.invoke('stats:overview'),
 
