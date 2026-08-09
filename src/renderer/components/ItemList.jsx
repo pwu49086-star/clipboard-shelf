@@ -3,7 +3,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { Clipboard, SearchX } from 'lucide-react'
 import ItemRow from './ItemRow'
 
-export default function ItemList({ items, selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, loading, searchQuery }) {
+export default function ItemList({ items, selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, loading, searchQuery, emptyHint = '剪贴板为空' }) {
   const virtuosoRef = useRef(null)
 
   // 选中项滚动到可见区域
@@ -57,8 +57,8 @@ export default function ItemList({ items, selectedId, selectedIds, multiMode, on
     return (
       <div className="item-list-empty">
         <Clipboard size={36} strokeWidth={1.5} style={{color:'var(--color-text-muted)',marginBottom:8}} />
-        <span style={{fontWeight:500}}>剪贴板为空</span>
-        <span style={{fontSize:12,color:'var(--color-text-muted)',marginTop:4}}>复制一些文字或截图试试～</span>
+        <span style={{fontWeight:500}}>{emptyHint}</span>
+        {emptyHint === '剪贴板为空' && <span style={{fontSize:12,color:'var(--color-text-muted)',marginTop:4}}>复制一些文字或截图试试～</span>}
       </div>
     )
   }

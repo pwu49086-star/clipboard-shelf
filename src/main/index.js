@@ -9,6 +9,9 @@ const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, protocol, n
 const path = require('path')
 const fs = require('fs')
 
+// 固定 userData 目录，避免 productName 变化导致数据目录漂移（%APPDATA%\clipboard-shelf）
+app.setPath('userData', path.join(app.getPath('appData'), 'clipboard-shelf'))
+
 // ====== 自动更新（仅打包版生效） ======
 let autoUpdater = null
 try {

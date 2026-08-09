@@ -39,6 +39,8 @@ export default function App() {
   const shiftKeyRef = useRef(false)
   const searchRef2 = useRef(search)
   searchRef2.current = search
+  const filterRef2 = useRef(filter)
+  filterRef2.current = filter
   const handleCopyRef = useRef(null)
   const handleDeleteRef = useRef(null)
 
@@ -71,9 +73,12 @@ export default function App() {
     toastTimer.current = setTimeout(() => setToast(null), 1800)
   }, [])
 
-  const loadItems = useCallback(async (query = '') => {
+  const loadItems = useCallback(async (query = '', filter = 'all') => {
     try {
-      const data = await window.api.getAll({ search: query, limit: 200 })
+      const opts = { search: query, limit: 5000 }
+      if (filter === 'fav') opts.favorite = true
+      else if (filter === 'text' || filter === 'image') opts.type = filter
+      const data = await window.api.getAll(opts)
       setItems(data)
     } catch (e) { console.error('Load failed:', e) }
     finally { setLoading(false) }
@@ -93,7 +98,7 @@ export default function App() {
   useEffect(() => {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      if (filter !== 'notes') loadItems(search)
+      if (filter !== 'notes') loadItems(search, filter)
     }, 250)
     return () => clearTimeout(debounceRef.current)
   }, [search, loadItems, filter])
@@ -118,7 +123,7 @@ export default function App() {
           return next
         })
       } else {
-        loadItems(searchRef2.current)
+        loadItems(searchRef2.current, filterRef2.current)
       }
       window.api.memoryPetFeedback().then(setPetFeedback).catch(() => {})
     })
@@ -336,6 +341,7 @@ export default function App() {
           ) : (
             <ItemList
               items={filteredItems} selectedId={selectedId} selectedIds={selectedIds} multiMode={multiMode}
+              emptyHint={filter === 'fav' ? '还没有收藏内容' : filter === 'image' ? '还没有图片' : filter === 'text' ? '还没有文字' : '剪贴板为空'}
               onSelect={handleSelect}
               onCopy={handleCopy} onDelete={handleDelete} onToggleFavorite={handleToggleFavorite}
               onEdit={handleEdit} onEditContent={handleEditContent} onOpenEdit={openEditModal} loading={loading} searchQuery={search}

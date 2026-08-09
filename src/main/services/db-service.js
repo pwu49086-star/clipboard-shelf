@@ -213,9 +213,16 @@ function remove(id) {
   return item || null
 }
 
-function getAll({ search = '', limit = 200 } = {}) {
+function getAll({ search = '', limit = 200, type = null, favorite = null } = {}) {
   if (!db) return []
   const trimmed = String(search).trim()
+
+  const extra = []
+  const extraParams = []
+  if (type) { extra.push('i.type = ?'); extraParams.push(type) }
+  if (favorite) { extra.push('i.isFavorite = 1') }
+  const extraSql = extra.length ? ' AND ' + extra.join(' AND ') : ''
+  const extraSqlNoAlias = extra.length ? ' AND ' + extra.join(' AND ').replace(/\bi\./g, '') : ''
 
   if (trimmed) {
     const hasCJK = /[\u4e00-\u9fff]/.test(trimmed)
@@ -225,9 +232,10 @@ function getAll({ search = '', limit = 200 } = {}) {
         const rows = db.prepare(`
           SELECT i.* FROM items i
           WHERE i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)
+          ${extraSql}
           ORDER BY i.isFavorite DESC, i.createTime DESC
           LIMIT ?
-        `).all(matchQuery, limit)
+        `).all(matchQuery, ...extraParams, limit)
         return rows
       } catch (e) {
         console.warn('[DBService] FTS search failed, fallback LIKE:', e.message)
@@ -239,12 +247,19 @@ function getAll({ search = '', limit = 200 } = {}) {
     return db.prepare(`
       SELECT * FROM items
       WHERE content LIKE ? ESCAPE '\\' OR ocrText LIKE ? ESCAPE '\\'
+      ${extraSqlNoAlias}
       ORDER BY isFavorite DESC, createTime DESC
       LIMIT ?
-    `).all(q, q, limit)
+    `).all(q, q, ...extraParams, limit)
   }
 
-  return db.prepare('SELECT * FROM items ORDER BY isFavorite DESC, createTime DESC LIMIT ?').all(limit)
+  let sql = 'SELECT * FROM items'
+  if (extra.length) {
+    const where = extra.join(' AND ').replace(/\bi\./g, '')
+    sql += ' WHERE ' + where
+  }
+  sql += ' ORDER BY isFavorite DESC, createTime DESC LIMIT ?'
+  return db.prepare(sql).all(...extraParams, limit)
 }
 
 function toggleFavorite(id) {
