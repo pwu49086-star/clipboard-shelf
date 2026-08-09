@@ -10,6 +10,7 @@ if (-not $rcedit) {
 
 $root = Split-Path -Parent $PSScriptRoot
 $icon = Join-Path $root 'resources\icon.ico'
+$version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 $targets = @(
   (Join-Path $root 'release\win-unpacked\Clipboard Shelf.exe'),
   (Join-Path $root 'release\Clipboard Shelf 1.0.0.exe')
@@ -21,8 +22,8 @@ foreach ($t in $targets) {
       --set-version-string 'ProductName' 'Clipboard Shelf' `
       --set-version-string 'FileDescription' 'Clipboard Shelf' `
       --set-version-string 'CompanyName' 'Clipboard Shelf' `
-      --set-file-version '1.0.0' `
-      --set-product-version '1.0.0' `
+      --set-file-version $version `
+      --set-product-version $version `
       --set-icon $icon
     Write-Host "meta fixed: $t"
   }
