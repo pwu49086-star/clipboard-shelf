@@ -1,0 +1,44 @@
+﻿appId: com.clipboard-shelf.app
+productName: Clipboard Shelf
+icon: resources/icon.ico
+directories:
+  output: release
+files:
+  - out/**/*
+  - node_modules/**/*
+  - "!node_modules/electron/**"
+  - "!node_modules/@electron/**"
+  - "!node_modules/electron-vite/**"
+  - "!node_modules/electron-builder/**"
+  - "!node_modules/electron-builder-squirrel-windows/**"
+  - "!node_modules/electron-publish/**"
+  - "!node_modules/dmg-builder/**"
+  - "!node_modules/app-builder-lib/**"
+  - "!node_modules/builder-util/**"
+  - "!node_modules/builder-util-runtime/**"
+  - "!node_modules/@vitejs/**"
+  - "!node_modules/vite/**"
+  - "!node_modules/esbuild/**"
+  - "!node_modules/rollup/**"
+  - "!node_modules/@rollup/**"
+  - package.json
+win:
+  target:
+    - target: portable
+      arch:
+        - x64
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "Clipboard Shelf"
+  uninstallDisplayName: "Clipboard Shelf"
+extraResources:
+  - from: scripts/ocr.py
+    to: ocr.py
+  - from: resources/behaviors.json
+    to: behaviors.json

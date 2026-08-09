@@ -1,0 +1,22 @@
+[
+  {"id":"B001","name":"look","unlockLv":0,"weight":25,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"look","expression":"curious"},
+  {"id":"B002","name":"blink","unlockLv":0,"weight":20,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"blink","expression":"idle"},
+  {"id":"B003","name":"lookaround","unlockLv":0,"weight":15,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"lookaround","expression":"curious"},
+  {"id":"B004","name":"think","unlockLv":0,"weight":10,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"think","expression":"think"},
+  {"id":"B005","name":"wiggle","unlockLv":0,"weight":10,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"wiggle","expression":"idle"},
+  {"id":"B006","name":"stretch","unlockLv":0,"weight":8,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"stretch","expression":"stretch"},
+  {"id":"B007","name":"yawn","unlockLv":0,"weight":7,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"yawn","expression":"sleepy"},
+  {"id":"B008","name":"shy","unlockLv":0,"weight":5,"cooldown":0,"states":["IDLE"],"condition":"always","animation":"shy","expression":"shy"},
+  {"id":"B009","name":"sad","unlockLv":0,"weight":0,"cooldown":0,"states":["IDLE"],"condition":"mood<30","animation":"sad","expression":"sad"},
+  {"id":"B010","name":"watch_mouse","unlockLv":2,"weight":8,"cooldown":30,"states":["IDLE"],"condition":"mouseNear","animation":"watch_mouse","expression":"curious"},
+  {"id":"B011","name":"hide_corner","unlockLv":3,"weight":6,"cooldown":60,"states":["IDLE"],"condition":"always","animation":"hide_corner","expression":"shy"},
+  {"id":"B012","name":"big_stretch","unlockLv":4,"weight":8,"cooldown":30,"states":["IDLE"],"condition":"always","animation":"big_stretch","expression":"stretch"},
+  {"id":"B013","name":"roll","unlockLv":5,"weight":5,"cooldown":60,"states":["IDLE"],"condition":"always","animation":"roll","expression":"excited"},
+  {"id":"B014","name":"high_bounce","unlockLv":6,"weight":6,"cooldown":30,"states":["IDLE"],"condition":"energy>30","animation":"high_bounce","expression":"happy"},
+  {"id":"B015","name":"wave","unlockLv":8,"weight":5,"cooldown":60,"states":["IDLE"],"condition":"always","animation":"wave","expression":"happy"},
+  {"id":"B016","name":"fly","unlockLv":10,"weight":3,"cooldown":120,"states":["IDLE"],"condition":"energy>50","animation":"fly","expression":"excited"},
+  {"id":"S001","name":"sleep_idle","unlockLv":0,"weight":90,"cooldown":0,"states":["SLEEP"],"condition":"always","animation":"none","expression":"sleep"},
+  {"id":"S002","name":"sleep_turn","unlockLv":0,"weight":8,"cooldown":0,"states":["SLEEP"],"condition":"always","animation":"sleep_turn","expression":"sleep"},
+  {"id":"D001","name":"sad_idle","unlockLv":0,"weight":60,"cooldown":0,"states":["SAD"],"condition":"always","animation":"sad","expression":"sad"},
+  {"id":"D002","name":"sad_sigh","unlockLv":0,"weight":10,"cooldown":0,"states":["SAD"],"condition":"always","animation":"sad_sigh","expression":"sad"}
+]

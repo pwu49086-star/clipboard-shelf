@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html,body{margin:0;padding:0;overflow:hidden;background:transparent}
+body{width:84px;height:84px;display:flex;align-items:center;justify-content:center;user-select:none;-webkit-user-select:none}
+.p{position:relative;width:64px;height:56px;cursor:grab;-webkit-app-region:no-drag}
+.b{width:100%;height:100%;position:relative;border-radius:50% 50% 46% 46%/55% 55% 45% 45%;background:radial-gradient(ellipse at 35% 30%,rgba(168,230,255,.95),rgba(203,166,255,.6));will-change:transform,border-radius}
+.b::before{content:'';position:absolute;top:7px;left:12px;width:16px;height:10px;background:radial-gradient(ellipse,rgba(255,255,255,.7),transparent 70%);border-radius:50%;transform:rotate(-15deg)}
+.ec{position:absolute;top:18px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:2}
+.e{width:9px;height:11px;background:#2B2B40;border-radius:50%;position:relative;transition:transform .15s ease}
+.e::after{content:'';position:absolute;top:2px;left:3px;width:3px;height:3px;background:#fff;border-radius:50%}
+.e.half{transform:scaleY(.4)}.e.closed{transform:scaleY(.05)}.e.wide{transform:scale(1.2,1.3)}.e.squint{transform:scaleY(.6)}
+.m{position:absolute;top:32px;left:50%;transform:translateX(-50%);width:7px;height:3px;border-radius:0 0 50% 50%;background:rgba(43,43,64,.25);z-index:2;transition:all .2s ease}
+.m.open{width:8px;height:7px;border-radius:50%}.m.big{width:10px;height:9px;border-radius:50%}.m.flat{height:2px;border-radius:2px}.m.o{width:6px;height:6px;border-radius:50%}
+.c{position:absolute;top:26px;width:8px;height:5px;background:rgba(255,180,200,.3);border-radius:50%;z-index:2;transition:opacity .5s ease}
+.c.l{left:7px}.c.r{right:7px}.c.hot{opacity:1;background:rgba(255,150,180,.5)}
+.zzz{position:absolute;top:-12px;right:-6px;font-size:8px;opacity:0;z-index:3;transition:opacity .5s ease}
+.zzz.show{opacity:1;animation:zfloat 2s ease-in-out infinite}
+@keyframes zfloat{0%,100%{transform:translate(0,0) rotate(0)}50%{transform:translate(3px,-5px) rotate(10deg)}}
+.excl{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:10px;opacity:0;z-index:3}
+.excl.show{opacity:1;animation:epop .4s cubic-bezier(.34,1.56,.64,1)}
+@keyframes epop{0%{transform:translateX(-50%) scale(0)}60%{transform:translateX(-50%) scale(1.3)}100%{transform:translateX(-50%) scale(1)}}
+.think-dots{position:absolute;top:-10px;right:-8px;display:flex;gap:2px;opacity:0;z-index:3}
+.think-dots.show{opacity:1}
+.think-dots span{width:4px;height:4px;background:rgba(43,43,64,.4);border-radius:50%;animation:tdot 1.2s ease infinite}
+.think-dots span:nth-child(2){width:5px;height:5px;animation-delay:.2s}
+.think-dots span:nth-child(3){width:6px;height:6px;animation-delay:.4s}
+@keyframes tdot{0%,100%{opacity:.3;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+</style>
+</head>
+<body>
+<div class="p" id="pet">
+  <div class="b" id="body">
+    <div class="ec" id="eyes"><div class="e" id="el"></div><div class="e" id="er"></div></div>
+    <div class="m" id="mouth"></div>
+    <div class="c l" id="bl"></div>
+    <div class="c r" id="br"></div>
+    <div class="zzz" id="zzz">💤</div>
+    <div class="excl" id="excl">❗</div>
+    <div class="think-dots" id="tdots"><span></span><span></span><span></span></div>
+  </div>
+</div>
+<script>
+const ipcRenderer=window.petAPI
+
+// ====== DOM ======
+const pet=document.getElementById('pet'),body=document.getElementById('body')
+const el=document.getElementById('el'),er=document.getElementById('er')
+const mouth=document.getElementById('mouth'),bl=document.getElementById('bl'),br=document.getElementById('br')
+const zzz=document.getElementById('zzz'),excl=document.getElementById('excl'),tdots=document.getElementById('tdots')
+
+// ====== State Machine ======
+const S={IDLE:'idle',CURIOUS:'curious',HAPPY:'happy',SLEEPY:'sleepy',SLEEP:'sleep',ALERT:'alert',THINK:'think',EXCITED:'excited',SHY:'shy',SURPRISE:'surprise',SAD:'sad',STRETCH:'stretch'}
+let state=S.IDLE,stateTime=0,stateTimer=null
+
+const EYE={NORMAL:'e',HALF:'e half',CLOSED:'e closed',WIDE:'e wide',SQUINT:'e squint'}
+const MOUTH={NORMAL:'m',OPEN:'m open',BIG:'m big',FLAT:'m flat',O:'m o'}
+const BLUSH={NORMAL:'c l',HOT:'c l hot'}
+
+function setExpression(eyeL,eyeR,mouthCls,blushL,blushR){
+  el.className=eyeL||EYE.NORMAL;er.className=eyeR||EYE.NORMAL
+  mouth.className=mouthCls||MOUTH.NORMAL;bl.className=blushL||BLUSH.NORMAL;br.className=blushR||'c r'
+}
+
+function setState(s,dur){clearTimeout(stateTimer);state=s;stateTime=Date.now();applyState(s);if(dur)stateTimer=setTimeout(()=>setState(S.IDLE),dur)}
+
+function applyState(s){
+  zzz.classList.remove('show');excl.classList.remove('show');tdots.classList.remove('show')
+  const e=EXPRESSIONS[s]||EXPRESSIONS.IDLE
+  setExpression(e.eyeL,e.eyeR,e.mouth,e.blushL,e.blushR)
+  if(s===S.SLEEP)zzz.classList.add('show')
+  if(s===S.ALERT)excl.classList.add('show')
+  if(s===S.THINK)tdots.classList.add('show')
+}
+
+// ====== 表情映射（数据驱动） ======
+const EXPRESSIONS={
+  IDLE:{eyeL:EYE.NORMAL,eyeR:EYE.NORMAL,mouth:MOUTH.NORMAL,blushL:BLUSH.HOT,blushR:'c r hot'},
+  CURIOUS:{eyeL:EYE.WIDE,eyeR:EYE.WIDE,mouth:MOUTH.O,blushL:BLUSH.NORMAL,blushR:'c r'},
+  HAPPY:{eyeL:EYE.SQUINT,eyeR:EYE.SQUINT,mouth:MOUTH.BIG,blushL:BLUSH.HOT,blushR:'c r hot'},
+  SLEEPY:{eyeL:EYE.HALF,eyeR:EYE.HALF,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'},
+  SLEEP:{eyeL:EYE.CLOSED,eyeR:EYE.CLOSED,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'},
+  ALERT:{eyeL:EYE.WIDE,eyeR:EYE.WIDE,mouth:MOUTH.O,blushL:BLUSH.NORMAL,blushR:'c r'},
+  THINK:{eyeL:EYE.SQUINT,eyeR:EYE.HALF,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'},
+  EXCITED:{eyeL:EYE.WIDE,eyeR:EYE.WIDE,mouth:MOUTH.BIG,blushL:BLUSH.HOT,blushR:'c r hot'},
+  SHY:{eyeL:EYE.SQUINT,eyeR:EYE.SQUINT,mouth:MOUTH.FLAT,blushL:BLUSH.HOT,blushR:'c r hot'},
+  SURPRISE:{eyeL:EYE.WIDE,eyeR:EYE.WIDE,mouth:MOUTH.O,blushL:BLUSH.HOT,blushR:'c r hot'},
+  SAD:{eyeL:EYE.SQUINT,eyeR:EYE.HALF,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'},
+  STRETCH:{eyeL:EYE.HALF,eyeR:EYE.HALF,mouth:MOUTH.O,blushL:BLUSH.NORMAL,blushR:'c r'},
+}
+
+// 根据心情动态调整 IDLE 表情
+function updateIdleExpression(){
+  if(state!==S.IDLE)return
+  if(displayMood>70)EXPRESSIONS.IDLE={...EXPRESSIONS.IDLE,blushL:BLUSH.HOT,blushR:'c r hot'}
+  else if(displayMood>40)EXPRESSIONS.IDLE={...EXPRESSIONS.IDLE,blushL:BLUSH.NORMAL,blushR:'c r'}
+  else if(displayMood>20)EXPRESSIONS.IDLE={eyeL:EYE.SQUINT,eyeR:EYE.SQUINT,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'}
+  else EXPRESSIONS.IDLE={eyeL:EYE.HALF,eyeR:EYE.HALF,mouth:MOUTH.FLAT,blushL:BLUSH.NORMAL,blushR:'c r'}
+}
+
+// ====== Personality ======
+const P={mood:80,energy:100,curiosity:50,attention:0,exp:0,level:1}
+let displayMood=80,displayEnergy=100,displayCuriosity=50,displayAttention=0
+let pendingLevelUp=false,lastRunTime=Date.now()
+
+const LEVEL_TABLE=[0,50,120,220,360,550,800,1100,1500,2000,2500,3000,3600,4200,5000]
+function calcLevel(exp){for(let i=LEVEL_TABLE.length-1;i>=0;i--){if(exp>=LEVEL_TABLE[i])return i+1}return 1}
+
+function safeInt(v,fallback){const n=parseInt(v);return isNaN(n)?fallback:n}
+try{
+  P.mood=Math.max(0,Math.min(100,safeInt(localStorage.getItem('pet-mood'),80)))
+  P.energy=Math.max(0,Math.min(100,safeInt(localStorage.getItem('pet-energy'),100)))
+  P.curiosity=Math.max(20,Math.min(100,safeInt(localStorage.getItem('pet-curiosity'),50)))
+  P.exp=Math.max(0,safeInt(localStorage.getItem('pet-exp'),0))
+  P.level=Math.max(1,safeInt(localStorage.getItem('pet-level'),1))
+  displayMood=P.mood;displayEnergy=P.energy;displayCuriosity=P.curiosity
+}catch{}
+
+function addExp(n){const old=P.level;P.exp+=n;P.level=calcLevel(P.exp);if(P.level>old)pendingLevelUp=true;save()}
+function addFavor(n){try{const f=safeInt(localStorage.getItem('pet-favor'),0)+n;localStorage.setItem('pet-favor',f)}catch{}}
+
+let saveTimer=null
+function save(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem('pet-mood',Math.round(P.mood));localStorage.setItem('pet-energy',Math.round(P.energy));localStorage.setItem('pet-curiosity',Math.round(P.curiosity));localStorage.setItem('pet-exp',P.exp);localStorage.setItem('pet-level',P.level)}catch{}},2000)}
+
+// ====== Animation Functions（纯动画，不包含业务逻辑） ======
+const ANIMATIONS={
+  look:()=>{const d=Math.random()>.5?1:-1;eyeTargetX=d*(2+Math.random()*2);eyeTargetY=Math.random()*2-1;setState(S.CURIOUS,2000+Math.random()*2000);setTimeout(()=>{eyeTargetX=0;eyeTargetY=0},3000)},
+  blink:()=>{el.className='e closed';er.className='e closed';setTimeout(()=>{if(state===S.IDLE){el.className='e';er.className='e'}},150)},
+  lookaround:()=>{setState(S.CURIOUS,3000);eyeTargetX=-2.5;setTimeout(()=>{eyeTargetX=2.5},1000);setTimeout(()=>{eyeTargetX=0},2000)},
+  think:()=>{setState(S.THINK,3000+Math.random()*2000);eyeTargetX=2;eyeTargetY=-2;setTimeout(()=>{eyeTargetX=0;eyeTargetY=0},4000)},
+  wiggle:()=>{const o=jellyW;let c=0;const iv=setInterval(()=>{jellyW=o+(c%2===0?3:-3);c++;if(c>6){clearInterval(iv);jellyW=100}},80)},
+  stretch:()=>{setState(S.STRETCH,2000);squash=0.85;stretch=1.15;setTimeout(()=>{squash=1.1;stretch=0.9},400);setTimeout(()=>{squash=1;stretch=1},800)},
+  yawn:()=>{if(sleepStage===0)sleepStage=1;setState(S.SLEEPY);mouth.className='m big';setTimeout(()=>{if(state===S.SLEEPY)mouth.className='m flat'},2500)},
+  shy:()=>{setState(S.SHY,2500);let c=0;const iv=setInterval(()=>{targetTilt=c%2===0?3:-3;c++;if(c>4){clearInterval(iv);targetTilt=0}},150)},
+  sad:()=>{setState(S.SAD,3000)},
+  watch_mouse:()=>{setState(S.CURIOUS,2000);eyeTargetX=eyeCurrentX;eyeTargetY=eyeCurrentY;setTimeout(()=>{eyeTargetX=0;eyeTargetY=0},2000)},
+  hide_corner:()=>{setState(S.SHY,3000);squash=0.85;stretch=1.15;setTimeout(()=>{squash=1;stretch=1},1000)},
+  big_stretch:()=>{setState(S.STRETCH,2500);squash=0.8;stretch=1.2;setTimeout(()=>{squash=1.15;stretch=0.85},600);setTimeout(()=>{squash=1;stretch=1},1200)},
+  roll:()=>{setState(S.EXCITED,2000);body.style.transition='transform 0.8s ease';body.style.transform='rotate(360deg)';setTimeout(()=>{body.style.transition='';body.style.transform=''},800)},
+  high_bounce:()=>{isBouncing=true;squash=0.7;stretch=1.3;setTimeout(()=>{squash=1.2;stretch=0.8;targetBodyY=-18},100);setTimeout(()=>{squash=0.85;stretch=1.15;targetBodyY=0;wobbleDamp=1},250);setTimeout(()=>{squash=1;stretch=1;isBouncing=false},500);setState(S.HAPPY,1500)},
+  wave:()=>{setState(S.HAPPY,2000);let c=0;const iv=setInterval(()=>{targetTilt=c%2===0?8:-2;c++;if(c>6){clearInterval(iv);targetTilt=0}},200)},
+  fly:()=>{setState(S.EXCITED,2500);isBouncing=true;targetBodyY=-20;squash=0.8;stretch=1.2;setTimeout(()=>{squash=1.1;stretch=0.9},500);setTimeout(()=>{targetBodyY=0;squash=0.85;stretch=1.15;wobbleDamp=1},1500);setTimeout(()=>{squash=1;stretch=1;isBouncing=false},2000)},
+  sleep_turn:()=>{targetTilt=Math.random()>0.5?3:-3;setTimeout(()=>targetTilt=0,800)},
+  sad_sigh:()=>{setState(S.SAD,2000);targetBodyY=4;setTimeout(()=>targetBodyY=0,1500)},
+  none:()=>{},
+}
+
+// ====== 条件评估（安全解析，不用 eval/new Function） ======
+function evalCondition(cond){
+  if(!cond||cond==='always')return true
+  try{
+    const vars={mood:P.mood,energy:P.energy,curiosity:P.curiosity,attention:P.attention,level:P.level,mouseNear:mouseNear?1:0}
+    let expr=cond
+    for(const[k,v]of Object.entries(vars)){expr=expr.replace(new RegExp('\\b'+k+'\\b','g'),String(v))}
+    const match=expr.match(/^\s*(\d+(?:\.\d+)?)\s*(<=|>=|==|!=|<|>)\s*(\d+(?:\.\d+)?)\s*$/)
+    if(match){
+      const a=parseFloat(match[1]),b=parseFloat(match[3])
+      switch(match[2]){
+        case '<':return a<b
+        case '>':return a>b
+        case '<=':return a<=b
+        case '>=':return a>=b
+        case '==':return a===b
+        case '!=':return a!==b
+      }
+    }
+    if(/^\s*\d+(?:\.\d+)?\s*$/.test(expr))return parseFloat(expr)!==0
+    return false
+  }catch{return false}
+}
+
+// ====== Behavior Engine（数据驱动） ======
+let behaviors=[]
+let lastBehaviorId=''
+let lastBehaviorTime=0
+const cooldowns={}
+
+// 加载行为配置
+async function loadBehaviors(){
+  try{
+    const json = await ipcRenderer.getBehaviors()
+    if(json)behaviors=JSON.parse(json)
+    else console.error('[Pet] No behaviors.json found')
+  }catch(e){console.error('[Pet] Load behaviors failed:',e)}
+}
+
+function canRun(b){
+  if((b.unlockLv||0)>P.level)return false
+  if(!b.states.includes(state))return false
+  if(!evalCondition(b.condition))return false
+  const cd=cooldowns[b.id]||0
+  if(Date.now()-cd<(b.cooldown||0)*1000)return false
+  if(b.id===lastBehaviorId)return false
+  return true
+}
+
+function pickBehavior(){
+  const available=behaviors.filter(canRun)
+  if(!available.length)return
+  // 好奇心影响权重
+  const weighted=available.map(b=>{
+    let w=b.weight||1
+    if(['B001','B003','B004','B008','B010'].includes(b.id))w*=P.curiosity/50
+    if(b.id==='B007'&&P.energy<30)w*=2
+    if(['B014','B013','B016'].includes(b.id)&&P.energy<30)w*=0.3
+    return {...b,w}
+  })
+  const total=weighted.reduce((s,b)=>s+b.w,0)
+  let r=Math.random()*total
+  for(const b of weighted){
+    r-=b.w
+    if(r<=0){
+      lastBehaviorId=b.id;lastBehaviorTime=Date.now();cooldowns[b.id]=Date.now()
+      const fn=ANIMATIONS[b.animation]
+      if(fn)fn()
+      return
+    }
+  }
+}
+
+let behaviorTimer=null
+function scheduleBehavior(){
+  clearTimeout(behaviorTimer)
+  const delay=state===S.SLEEP?15000+Math.random()*15000:8000+Math.random()*32000
+  behaviorTimer=setTimeout(()=>{if(state===S.IDLE||state===S.SLEEP)pickBehavior();scheduleBehavior()},delay)
+}
+
+// ====== 成长阶段 ======
+const STAGES=[
+  {min:1,name:'幼年',blush:.3,eyeSpeed:.6,breathSpeed:.8},
+  {min:4,name:'活泼',blush:.45,eyeSpeed:.8,breathSpeed:1},
+  {min:8,name:'成熟',blush:.55,eyeSpeed:1,breathSpeed:1.1},
+]
+let currentStage=STAGES[0]
+function updateStage(){for(let i=STAGES.length-1;i>=0;i--){if(P.level>=STAGES[i].min){currentStage=STAGES[i];return}}currentStage=STAGES[0]}
+
+// ====== Animation Loop ======
+let frame=0,breathPhase=0
+let jellyW=100,jellyH=100
+let eyeTargetX=0,eyeTargetY=0,eyeCurrentX=0,eyeCurrentY=0
+let bodyY=0,targetBodyY=0
+let squash=1,stretch=1
+let tilt=0,targetTilt=0
+let wobbleDamp=0
+let lastInteraction=Date.now()
+let mouseNear=false,isBouncing=false,lastCuriosityUpdate=0
+
+function tick(){
+  frame++;const now=Date.now()
+  displayMood+=(P.mood-displayMood)*0.02;displayEnergy+=(P.energy-displayEnergy)*0.02
+  displayCuriosity+=(P.curiosity-displayCuriosity)*0.02;displayAttention+=(P.attention-displayAttention)*0.05
+  if(mouseNear)P.attention=Math.min(100,P.attention+1.5);else P.attention=Math.max(0,P.attention-0.3)
+  if(now-lastCuriosityUpdate>30000){lastCuriosityUpdate=now;if(now-lastInteraction<60000)P.curiosity=Math.min(100,P.curiosity+1);else P.curiosity=Math.max(20,P.curiosity-0.5)}
+  if(now-lastRunTime>1800000){lastRunTime=now;addExp(8)}
+  updateIdleExpression()
+
+  // 升级仪式
+  if(pendingLevelUp&&state===S.IDLE){
+    pendingLevelUp=false;setState(S.HAPPY,2500);isBouncing=true;squash=0.75;stretch=1.25
+    setTimeout(()=>{squash=1.2;stretch=0.8;targetBodyY=-14},100)
+    setTimeout(()=>{squash=0.85;stretch=1.15;targetBodyY=0;wobbleDamp=1},250)
+    setTimeout(()=>{squash=1;stretch=1;isBouncing=false},500)
+  }
+
+  const energyMult=displayEnergy/100*0.4+0.6
+  const sb=currentStage.breathSpeed
+  let bs=0.03*energyMult*sb;if(state===S.SLEEPY)bs=0.02*energyMult;if(state===S.SLEEP)bs=0.012*energyMult
+  breathPhase+=bs
+  const breathY=Math.sin(breathPhase)*3
+  const breathScaleY=1+Math.sin(breathPhase)*0.02
+  const breathScaleX=1-Math.sin(breathPhase)*0.015
+  if(!isBouncing)targetBodyY=breathY
+
+  let ws=0.015*energyMult;if(state===S.SLEEPY)ws=0.01*energyMult;if(state===S.SLEEP)ws=0.006*energyMult
+  jellyW=100+Math.sin(frame*ws)*2;jellyH=100-Math.sin(frame*ws)*1.5
+
+  if(squash!==1||stretch!==1){squash+=(1-squash)*0.12;stretch+=(1-stretch)*0.12;if(Math.abs(squash-1)<0.005)squash=1;if(Math.abs(stretch-1)<0.005)stretch=1}
+  tilt+=(targetTilt-tilt)*0.08;if(Math.abs(tilt)<0.1)tilt=0
+  if(wobbleDamp>0){wobbleDamp*=0.92;if(wobbleDamp<0.1)wobbleDamp=0}
+
+  let es=(displayAttention>60?0.1:0.05)*currentStage.eyeSpeed
+  if(state===S.SLEEPY)es=0.03;if(state===S.SLEEP)es=0.01
+  eyeCurrentX+=(eyeTargetX-eyeCurrentX)*es;eyeCurrentY+=(eyeTargetY-eyeCurrentY)*es
+
+  bodyY+=(targetBodyY-bodyY)*0.1
+  const finalW=jellyW*squash*breathScaleX/100
+  const finalH=jellyH*stretch*breathScaleY/100
+  const wobbleAngle=wobbleDamp*Math.sin(frame*0.3)*3
+  body.style.transform=`translateY(${bodyY}px) rotate(${tilt+wobbleAngle}deg) scale(${finalW},${finalH})`
+  body.style.borderRadius=`${50+Math.sin(frame*0.02)*2}% ${50-Math.sin(frame*0.02)*2}% ${46+Math.sin(frame*0.015)*2}% ${46-Math.sin(frame*0.015)*2}%/${55+Math.sin(frame*0.018)*2}% ${55-Math.sin(frame*0.018)*2}% ${45-Math.sin(frame*0.012)*2}% ${45+Math.sin(frame*0.012)*2}%`
+
+  const bo=currentStage.blush
+  bl.style.opacity=bl.className.includes('hot')?1:bo
+  br.style.opacity=br.className.includes('hot')?1:bo
+
+  const maxMove=displayAttention>30?2.5:1.5
+  const mx=Math.max(-maxMove,Math.min(maxMove,eyeCurrentX))
+  const my=Math.max(-maxMove,Math.min(maxMove,eyeCurrentY))
+  el.style.marginLeft=`${mx}px`;el.style.marginTop=`${my}px`
+  er.style.marginLeft=`${mx}px`;er.style.marginTop=`${my}px`
+
+  // 窗口不可见时暂停动画，节省 CPU
+  if(document.hidden){
+    setTimeout(()=>requestAnimationFrame(tick),1000)
+  }else{
+    requestAnimationFrame(tick)
+  }
+}
+
+// ====== Sleep System ======
+const SLEEP_STAGES=[{idle:900000,state:S.SLEEPY},{idle:1200000,state:S.SLEEP}]
+let lastSleepCheck=0,sleepStage=0
+
+function checkSleep(){
+  const now=Date.now();if(now-lastSleepCheck<3000)return;lastSleepCheck=now
+  const idleMs=now-lastInteraction
+  if(state===S.SLEEP){P.energy=Math.min(100,P.energy+0.3);return}
+  if(state!==S.IDLE&&state!==S.SLEEPY)return
+  for(let i=SLEEP_STAGES.length-1;i>=0;i--){if(idleMs>=SLEEP_STAGES[i].idle&&sleepStage<=i){sleepStage=i+1;setState(SLEEP_STAGES[i].state);break}}
+}
+
+function wakeUp(){
+  if(state===S.SLEEP||state===S.SLEEPY){
+    sleepStage=0;setState(S.ALERT,1500);isBouncing=true;squash=0.7;stretch=1.4
+    setTimeout(()=>{squash=1.2;stretch=0.8},150)
+    setTimeout(()=>{squash=1;stretch=1;isBouncing=false},400)
+    setTimeout(()=>{setState(S.STRETCH,2500);squash=0.85;stretch=1.15;setTimeout(()=>{squash=1.1;stretch=0.9},500);setTimeout(()=>{squash=1;stretch=1},1000)},1800)
+  }
+  lastInteraction=Date.now()
+}
+
+// ====== 产品反馈系统（宠物参与产品） ======
+let copyCount=0,lastCopyTime=0
+
+// 复制内容 → 开心
+ipcRenderer.on('pet:clipboard',(e,item)=>{
+  lastInteraction=Date.now();copyCount++;lastCopyTime=Date.now()
+  if(state===S.SLEEP)wakeUp()
+  if(copyCount>=3&&state===S.IDLE){
+    // 连续复制 → 思考 → 开心
+    setState(S.THINK,2000)
+    setTimeout(()=>{if(state===S.IDLE||state===S.THINK){setState(S.HAPPY,1500);isBouncing=true;squash=0.75;stretch=1.25;setTimeout(()=>{squash=1.1;stretch=0.9},120);setTimeout(()=>{squash=1;stretch=1;isBouncing=false},350)}},2000)
+    copyCount=0;addExp(5)
+  }else{
+    // 普通复制 → 小开心
+    setState(S.HAPPY,1500)
+    squash=0.9;stretch=1.1
+    setTimeout(()=>{squash=1;stretch=1},200)
+  }
+  P.mood=Math.min(100,P.mood+3);save()
+})
+
+// OCR 完成 → 兴奋（抱着文字跑回来）
+ipcRenderer.on('pet:ocr-done',()=>{
+  lastInteraction=Date.now()
+  if(state===S.SLEEP)wakeUp()
+  setState(S.EXCITED,2500)
+  isBouncing=true;squash=0.7;stretch=1.3
+  setTimeout(()=>{squash=1.2;stretch=0.8;targetBodyY=-12},100)
+  setTimeout(()=>{squash=0.85;stretch=1.15;targetBodyY=0;wobbleDamp=1},250)
+  setTimeout(()=>{squash=1;stretch=1;isBouncing=false},500)
+  P.mood=Math.min(100,P.mood+5);addExp(3);save()
+})
+
+// 删除 → 吃掉纸条
+ipcRenderer.on('pet:delete',()=>{
+  lastInteraction=Date.now()
+  if(state===S.SLEEP)return
+  // 嘴巴张开"吃"
+  mouth.className='m big'
+  setState(S.HAPPY,1200)
+  setTimeout(()=>{mouth.className='m'},800)
+  squash=0.85;stretch=1.15
+  setTimeout(()=>{squash=1;stretch=1},300)
+})
+
+// 搜索为空 → 翻箱倒柜
+ipcRenderer.on('pet:search-empty',()=>{
+  lastInteraction=Date.now()
+  if(state===S.SLEEP)wakeUp()
+  setState(S.CURIOUS,3000)
+  // 左右翻找
+  eyeTargetX=-3
+  setTimeout(()=>{eyeTargetX=3},500)
+  setTimeout(()=>{eyeTargetX=-2},1000)
+  setTimeout(()=>{eyeTargetX=0},1500)
+  // 身体左右摇
+  let c=0
+  const iv=setInterval(()=>{targetTilt=c%2===0?4:-4;c++;if(c>4){clearInterval(iv);targetTilt=0}},200)
+})
+
+// 收藏 → 开心跳
+ipcRenderer.on('pet:favorite',()=>{
+  lastInteraction=Date.now()
+  if(state===S.SLEEP)wakeUp()
+  setState(S.HAPPY,1500)
+  P.mood=Math.min(100,P.mood+3);addFavor(1);save()
+  squash=0.75;stretch=1.25
+  setTimeout(()=>{squash=1.1;stretch=0.9},120)
+  setTimeout(()=>{squash=1;stretch=1},300)
+})
+
+setInterval(()=>{if(Date.now()-lastCopyTime>10000)copyCount=0},5000)
+
+let lastDate=new Date().toDateString()
+setInterval(()=>{const today=new Date().toDateString();if(today!==lastDate){lastDate=today;addExp(2);if(state===S.IDLE){setState(S.HAPPY,2000);isBouncing=true;squash=0.75;stretch=1.25;targetBodyY=-10;setTimeout(()=>{squash=1;stretch=1;targetBodyY=0;isBouncing=false},400)}}},60000)
+
+// ====== Mouse Tracking ======
+let mouseMoveThrottle=0,mouseStayTimer=0
+const FAR=100,NEAR=60,CLOSE=25
+
+document.addEventListener('mousemove',(e)=>{
+  const now=Date.now();if(now-mouseMoveThrottle<50)return;mouseMoveThrottle=now
+  const r=body.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2
+  const dx=e.clientX-cx,dy=e.clientY-cy,dist=Math.sqrt(dx*dx+dy*dy)
+  if(dist<FAR){
+    mouseNear=true;lastInteraction=now
+    let ts=dist<CLOSE?1:dist<NEAR?0.6:0.3;ts*=Math.min(1,displayAttention/40)
+    const mt=displayAttention>60?3:2
+    eyeTargetX=Math.max(-mt,Math.min(mt,dx/dist*mt*ts));eyeTargetY=Math.max(-2,Math.min(2,dy/dist*2*ts))
+    if(dist<NEAR&&displayAttention<30){eyeTargetX*=0.3;eyeTargetY*=0.3}
+    if(dist<CLOSE){if(!mouseStayTimer)mouseStayTimer=now;if(now-mouseStayTimer>2000)P.attention=Math.min(100,P.attention+0.5)}
+    else mouseStayTimer=0
+    if(state===S.SLEEP||state===S.SLEEPY)wakeUp()
+  }else{mouseNear=false;mouseStayTimer=0}
+})
+document.addEventListener('mouseleave',()=>{mouseNear=false;mouseStayTimer=0;eyeTargetX=0;eyeTargetY=0})
+
+// ====== Edge Peek ======
+let isPeeking=false
+function checkEdgePeek(x,y){
+  const sw=window.screen.width,sh=window.screen.height,edge=20
+  const atL=x<edge,atR=x+84>sw-edge,atT=y<edge
+  if(atL||atR||atT){
+    if(!isPeeking){isPeeking=true;body.style.transition='transform 0.3s ease'
+      if(atL)body.style.transform='translateX(20px) scale(0.7)'
+      else if(atR)body.style.transform='translateX(-20px) scale(0.7)'
+      else body.style.transform='translateY(20px) scale(0.7)'
+      el.className='e wide';er.className='e wide'}
+  }else if(isPeeking){isPeeking=false;body.style.transition='transform 0.3s ease';body.style.transform='';setTimeout(()=>body.style.transition='',300);if(state===S.IDLE)applyState(S.IDLE)}
+}
+
+// ====== Drag & Click ======
+let startX,startY,moved=false
+pet.addEventListener('mousedown',(e)=>{
+  if(e.button)return;moved=false;startX=e.screenX;startY=e.screenY
+  lastInteraction=Date.now();if(state===S.SLEEP||state===S.SLEEPY)wakeUp()
+  squash=0.85;stretch=1.15
+  const wx=e.screenX-e.clientX,wy=e.screenY-e.clientY
+  const onMove=(ev)=>{
+    if(Math.abs(ev.screenX-startX)>3||Math.abs(ev.screenY-startY)>3){
+      moved=true;const dx=ev.screenX-startX
+      ipcRenderer.send('pet:move',{x:wx+dx,y:wy+(ev.screenY-startY)})
+      squash=1.08;stretch=0.92;targetTilt=Math.max(-8,Math.min(8,dx*0.1))
+      checkEdgePeek(wx+dx,wy+(ev.screenY-startY))
+    }
+  }
+  const onUp=()=>{
+    window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp)
+    squash=1;stretch=1;targetTilt=0
+    if(moved){ipcRenderer.send('pet:savePosition');ipcRenderer.send('pet:snapToEdge');addExp(1)}
+    else{ipcRenderer.send('pet:expand');setTimeout(()=>ipcRenderer.send('pet:focusSearch'),200);setState(S.HAPPY,1500);P.mood=Math.min(100,P.mood+3);addExp(1)}
+  }
+  window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp)
+})
+
+// ====== 拖拽导入 ======
+pet.addEventListener('dragover',e=>e.preventDefault())
+pet.addEventListener('drop',async(e)=>{
+  e.preventDefault()
+  for(const f of Array.from(e.dataTransfer.files)){
+    if(f.type.startsWith('image/')){const b64=await new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result.split(',')[1]);rd.readAsDataURL(f)});ipcRenderer.send('pet:importImage',b64,f.name)}
+    else if(f.type==='text/plain'||f.name.endsWith('.txt')||f.name.endsWith('.md')){ipcRenderer.send('pet:importText',await f.text())}
+  }
+  setState(S.HAPPY,1500)
+})
+
+// ====== 衰减 ======
+setInterval(()=>{P.mood=Math.max(0,P.mood-0.05);P.energy=Math.max(0,P.energy-0.02);save()},60000)
+
+// ====== Init ======
+loadBehaviors().then(()=>{
+  updateStage()
+  tick()
+  setState(S.IDLE)
+  scheduleBehavior()
+  setInterval(checkSleep,3000)
+})
+</script>
+</body>
+</html>

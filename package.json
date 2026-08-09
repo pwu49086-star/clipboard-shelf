@@ -1,0 +1,31 @@
+{
+  "name": "clipboard-shelf",
+  "version": "1.0.0",
+  "author": "Clipboard Shelf",
+  "description": "Clipboard history tool for Windows",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "build": "node build.mjs",
+    "build:win": "node build.mjs && electron-builder --win"
+  },
+  "dependencies": {
+    "sql.js": "^1.11.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@vitejs/plugin-react": "^4.3.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "electron-vite": "^5.0.0",
+    "esbuild": "^0.24.2",
+    "lucide-react": "^0.460.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-virtuoso": "^4.10.0",
+    "rollup": "^4.62.0",
+    "sharp": "^0.35.3",
+    "vite": "^5.4.0"
+  }
+}

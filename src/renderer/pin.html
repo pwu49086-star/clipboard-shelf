@@ -1,0 +1,82 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:transparent;user-select:none;-webkit-user-select:none}
+.pin-container{position:relative;width:100%;height:100%;cursor:grab;border-radius:6px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.25)}
+.pin-container:active{cursor:grabbing}
+.pin-img{width:100%;height:100%;object-fit:contain;pointer-events:none}
+.pin-controls{position:absolute;top:4px;right:4px;display:flex;gap:2px;opacity:0;transition:opacity .2s}
+.pin-container:hover .pin-controls{opacity:1}
+.pin-btn{width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,.5);color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.pin-btn:hover{background:rgba(255,60,60,.8)}
+.pin-info{position:absolute;bottom:4px;left:4px;font-size:10px;color:rgba(255,255,255,.7);opacity:0;transition:opacity .2s;text-shadow:0 1px 2px rgba(0,0,0,.5);pointer-events:none}
+.pin-container:hover .pin-info{opacity:1}
+</style>
+</head>
+<body>
+<div class="pin-container" id="pin">
+  <img class="pin-img" id="img" />
+  <div class="pin-controls">
+    <button class="pin-btn" id="closeBtn" title="关闭">×</button>
+  </div>
+  <div class="pin-info" id="info"></div>
+</div>
+<script>
+const{ipcRenderer}=require('electron')
+const pin=document.getElementById('pin')
+const img=document.getElementById('img')
+const closeBtn=document.getElementById('closeBtn')
+const info=document.getElementById('info')
+
+let pinId=null
+let startX,startY,startW,startH
+let moved=false
+
+// 初始化
+ipcRenderer.on('pin:init',(e,data)=>{
+  pinId=data.id
+  img.src='file:///'+data.imagePath.replace(/\\/g,'/')
+  info.textContent=data.width+'×'+data.height
+})
+
+// 拖拽移动
+pin.addEventListener('mousedown',(e)=>{
+  if(e.target===closeBtn)return
+  moved=false
+  startX=e.screenX
+  startY=e.screenY
+  const [wx,wy]=[] // 窗口位置由主进程管理
+  const onMove=(ev)=>{
+    moved=true
+    const dx=ev.screenX-startX
+    const dy=ev.screenY-startY
+    ipcRenderer.send('pin:move',{id:pinId,x:ev.screenX-ev.clientX,y:ev.screenY-ev.clientY})
+  }
+  const onUp=()=>{
+    window.removeEventListener('mousemove',onMove)
+    window.removeEventListener('mouseup',onUp)
+  }
+  window.addEventListener('mousemove',onMove)
+  window.addEventListener('mouseup',onUp)
+})
+
+// 滚轮缩放
+pin.addEventListener('wheel',(e)=>{
+  e.preventDefault()
+  const delta=e.deltaY>0?-20:20
+  const w=Math.max(100,Math.min(800,pin.offsetWidth+delta))
+  const h=Math.max(100,Math.min(800,pin.offsetHeight+delta))
+  ipcRenderer.send('pin:resize',{id:pinId,width:w,height:h})
+})
+
+// 关闭
+closeBtn.addEventListener('click',()=>ipcRenderer.send('pin:close',{id:pinId}))
+
+// 双击关闭
+pin.addEventListener('dblclick',()=>ipcRenderer.send('pin:close',{id:pinId}))
+</script>
+</body>
+</html>

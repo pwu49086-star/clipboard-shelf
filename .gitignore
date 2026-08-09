@@ -1,0 +1,7 @@
+node_modules/
+release/
+out/
+err.txt
+out.txt
+*.log
+.DS_Store
