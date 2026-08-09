@@ -49,7 +49,8 @@ export function renderMarkdown(src) {
       continue
     }
 
-    const quote = trimmed.match(/^>\s?(.*)$/)
+    // 内容已整体转义，> 变成了 &gt;，这里检测转义后的引用标记
+    const quote = trimmed.match(/^&gt;\s?(.*)$/)
     if (quote) { closeList(); out.push(`<blockquote>${inline(quote[1])}</blockquote>`); continue }
 
     closeList()

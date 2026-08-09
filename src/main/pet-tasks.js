@@ -3,6 +3,7 @@
  */
 const path = require('path')
 const fs = require('fs')
+const os = require('os')
 const { app } = require('electron')
 const { eventBus, Events } = require('./core/event-bus')
 
@@ -26,7 +27,12 @@ const SKINS = [
 let state = null
 
 function filePath() {
-  return path.join(app.getPath('userData'), 'pet-tasks.json')
+  if (process.env.PET_TASKS_FILE) return process.env.PET_TASKS_FILE
+  try {
+    return path.join(app.getPath('userData'), 'pet-tasks.json')
+  } catch {
+    return path.join(os.tmpdir(), 'pet-tasks.json')
+  }
 }
 
 function today() {

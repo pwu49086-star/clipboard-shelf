@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "node dev.mjs",
     "build": "node build.mjs",
-    "build:win": "node build.mjs && electron-builder --win"
+    "build:win": "node build.mjs && electron-builder --win",
+    "test": "node --test"
   },
   "dependencies": {
     "sql.js": "^1.11.0"
