@@ -1,4 +1,4 @@
-﻿import { memo, useCallback, useState, useRef, useEffect } from 'react'
+import { memo, useCallback, useState, useRef, useEffect } from 'react'
 import { FileText, Image, Copy, Star, Trash2, AlertTriangle, ClipboardCopy, Pin } from 'lucide-react'
 
 function formatTime(ts) {
@@ -52,6 +52,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   const [editText, setEditText] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [copyFlash, setCopyFlash] = useState(false)
+  const [ctx, setCtx] = useState(null)
   const confirmTimer = useRef(null)
   const editRef = useRef(null)
 
@@ -124,6 +125,15 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
     return () => { if (confirmTimer.current) clearTimeout(confirmTimer.current) }
   }, [])
 
+  useEffect(() => {
+    if (!ctx) return
+    const close = () => setCtx(null)
+    const esc = (e) => { if (e.key === 'Escape') setCtx(null) }
+    window.addEventListener('click', close)
+    window.addEventListener('keydown', esc)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('keydown', esc) }
+  }, [ctx])
+
   const handleFavorite = useCallback((e) => {
     e.stopPropagation()
     onToggleFavorite(item.id)
@@ -133,6 +143,12 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
     e.stopPropagation()
     if (item.filePath) window.api.pinImage(item.filePath)
   }, [item.filePath])
+
+  const openCtx = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setCtx({ x: e.clientX, y: e.clientY })
+  }, [])
 
   
 
@@ -159,6 +175,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
       className={`item-row ${isSelected ? 'selected' : ''} ${isImage ? 'has-image' : ''} ${copyFlash ? 'item-copy-flash' : ''}`}
       onClick={handleRowClick}
       onDoubleClick={isImage ? undefined : (e) => { e.stopPropagation(); setCopyFlash(true); setTimeout(() => setCopyFlash(false), 400); onCopy(item) }}
+      onContextMenu={openCtx}
       draggable={!multiMode}
       onDragStart={handleDragStart}
     >
@@ -237,6 +254,17 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
           {confirmDelete ? <AlertTriangle size={13} /> : <Trash2 size={13} />}
         </button>
       </div>
+
+      {ctx && (
+        <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} onClick={e => e.stopPropagation()}>
+          <button onClick={() => { onCopy(item); setCtx(null) }}>复制</button>
+          <button onClick={() => { onToggleFavorite(item.id); setCtx(null) }}>{item.isFavorite ? '取消收藏' : '收藏'}</button>
+          {isImage && item.filePath && <button onClick={() => { window.api.pinImage(item.filePath); setCtx(null) }}>钉到桌面</button>}
+          {isImage && item.filePath && <button onClick={() => { window.api.showInExplorer(item.filePath); setCtx(null) }}>在文件夹中显示</button>}
+          {!isImage && <button onClick={() => { onEdit(item); setCtx(null) }}>编辑</button>}
+          <button className="ctx-danger" onClick={() => { onDelete(item.id); setCtx(null) }}>删除</button>
+        </div>
+      )}
       
     </div>
   )

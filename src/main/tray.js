@@ -58,6 +58,8 @@ function setup(mainWindow) {
         }
       }
     },
+    { label: '命令面板', click: () => { if (mainWindow) mainWindow.webContents.send('tray:command', 'palette') } },
+    { label: '截图', click: () => { if (mainWindow) mainWindow.webContents.send('tray:command', 'screenshot') } },
     { type: 'separator' },
     {
       label: '退出',

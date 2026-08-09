@@ -28,6 +28,9 @@ export default function App() {
   const [petFeedback, setPetFeedback] = useState(null)
   const [multiMode, setMultiMode] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('cs-theme') || 'light' } catch { return 'light' }
+  })
   const toastTimer = useRef(null)
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
@@ -46,6 +49,12 @@ export default function App() {
     const off = window.api.onPaletteToggle ? window.api.onPaletteToggle(() => setPaletteOpen(o => !o)) : null
     return () => { if (off) off() }
   }, [])
+
+  // 主题
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try { localStorage.setItem('cs-theme', theme) } catch {}
+  }, [theme])
 
   // 追踪 Shift 键状态
   useEffect(() => {
@@ -212,6 +221,15 @@ export default function App() {
     try { await window.api.screenshot() } catch {}
     finally { setShooting(false) }
   }, [])
+
+  // 托盘命令
+  useEffect(() => {
+    const off = window.api.onTrayCommand ? window.api.onTrayCommand((action) => {
+      if (action === 'palette') setPaletteOpen(true)
+      else if (action === 'screenshot') handleScreenshot()
+    }) : null
+    return () => { if (off) off() }
+  }, [handleScreenshot])
 
   const handleDrop = useCallback(async (e) => {
     e.preventDefault()

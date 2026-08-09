@@ -96,6 +96,28 @@ const PET_SIZE = 84
 let lastSwitchTime = 0
 const SWITCH_COOLDOWN = 500
 
+// ====== 多显示器 ======
+function displayForPoint(x, y) {
+  return screen.getAllDisplays().find(d =>
+    x >= d.bounds.x && x < d.bounds.x + d.bounds.width &&
+    y >= d.bounds.y && y < d.bounds.y + d.bounds.height
+  ) || screen.getPrimaryDisplay()
+}
+
+function displayForCenter(bounds) {
+  return displayForPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+}
+
+function initialMainBounds() {
+  const cursor = screen.getCursorScreenPoint()
+  const d = displayForPoint(cursor.x, cursor.y)
+  return {
+    width: MAIN_WIDTH, height: MAIN_HEIGHT,
+    x: d.workArea.x + d.workArea.width - MAIN_WIDTH - 40,
+    y: Math.round(d.workArea.y + (d.workArea.height - MAIN_HEIGHT) / 2)
+  }
+}
+
 // ====== Window Animation ======
 function fadeIn(win, duration = 150) {
   if (!win || win.isDestroyed()) return
@@ -136,12 +158,18 @@ function fadeOut(win, duration = 120) {
 
 // ====== Main Window ======
 function createWindow() {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
-  const savedBounds = config.mainBounds || {
-    width: MAIN_WIDTH, height: MAIN_HEIGHT,
-    x: screenWidth - MAIN_WIDTH - 40,
-    y: Math.round((screenHeight - MAIN_HEIGHT) / 2)
-  }
+  const savedBounds = (() => {
+    if (config.mainBounds) {
+      const d = displayForCenter(config.mainBounds)
+      const wa = d.workArea
+      const w = Math.min(config.mainBounds.width, wa.width)
+      const h = Math.min(config.mainBounds.height, wa.height)
+      const x = Math.max(wa.x, Math.min(config.mainBounds.x, wa.x + wa.width - w))
+      const y = Math.max(wa.y, Math.min(config.mainBounds.y, wa.y + wa.height - h))
+      return { width: w, height: h, x, y }
+    }
+    return initialMainBounds()
+  })()
 
   mainWindow = new BrowserWindow({
     width: savedBounds.width,
@@ -223,11 +251,19 @@ function createWindow() {
 
 // ====== Pet Window ======
 function createPetWindow() {
-  const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize
-  const pos = petPosition || {
-    x: screenWidth - PET_SIZE - 16,
-    y: 16
-  }
+  const pos = (() => {
+    if (petPosition) {
+      const d = displayForCenter({ ...petPosition, width: PET_SIZE, height: PET_SIZE })
+      const wa = d.workArea
+      return {
+        x: Math.max(wa.x, Math.min(petPosition.x, wa.x + wa.width - PET_SIZE)),
+        y: Math.max(wa.y, Math.min(petPosition.y, wa.y + wa.height - PET_SIZE))
+      }
+    }
+    const cursor = screen.getCursorScreenPoint()
+    const d = displayForPoint(cursor.x, cursor.y)
+    return { x: d.workArea.x + d.workArea.width - PET_SIZE - 16, y: d.workArea.y + 16 }
+  })()
 
   petWindow = new BrowserWindow({
     width: PET_SIZE,

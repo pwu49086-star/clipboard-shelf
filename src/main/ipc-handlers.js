@@ -393,6 +393,28 @@ function setup(mainWindow) {
   ipcMain.handle('settings:setAutoStart', (event, enabled) => { app.setLoginItemSettings({ openAtLogin: enabled }) })
   ipcMain.handle('settings:getAutoStart', () => app.getLoginItemSettings().openAtLogin)
 
+  // 数据统计
+  ipcMain.handle('stats:overview', () => {
+    try {
+      const all = db.getAll({ limit: 100000 })
+      const startOfDay = new Date()
+      startOfDay.setHours(0, 0, 0, 0)
+      const backupsDir = path.join(app.getPath('userData'), 'backups')
+      let backupCount = 0
+      try { backupCount = fs.readdirSync(backupsDir).filter(f => f.startsWith('shelf-')).length } catch {}
+      return {
+        total: all.length,
+        favorites: all.filter(i => i.isFavorite === 1).length,
+        text: all.filter(i => i.type === 'text').length,
+        image: all.filter(i => i.type === 'image').length,
+        todayNew: all.filter(i => i.createTime >= startOfDay.getTime()).length,
+        notes: db.getAllNotes().length,
+        backups: backupCount,
+        updatedAt: Date.now()
+      }
+    } catch (e) { return { error: e.message } }
+  })
+
   // 剪贴板读取（命令面板用）
   ipcMain.handle('clipboard:readText', () => clipboard.readText())
 

@@ -63,6 +63,16 @@ contextBridge.exposeInMainWorld('api', {
   tasksBump: (key) => ipcRenderer.invoke('tasks:bump', key),
   tasksSelectSkin: (skin) => ipcRenderer.invoke('tasks:selectSkin', skin),
 
+  // 数据统计
+  statsOverview: () => ipcRenderer.invoke('stats:overview'),
+
+  // 托盘命令
+  onTrayCommand: (callback) => {
+    const handler = (event, action) => callback(action)
+    ipcRenderer.on('tray:command', handler)
+    return () => ipcRenderer.removeListener('tray:command', handler)
+  },
+
   // 开机自启
   setAutoStart: (enabled) => ipcRenderer.invoke('settings:setAutoStart', enabled),
   getAutoStart: () => ipcRenderer.invoke('settings:getAutoStart'),

@@ -105,6 +105,25 @@
 }
 */
 
+/* 深色主题（手动切换，覆盖系统偏好） */
+:root[data-theme='dark'] {
+  --c-bg: #161618;
+  --c-surface: #1E1E22;
+  --c-surface-hover: #26262B;
+  --c-surface-active: #2E2E34;
+  --c-border: #2E2E33;
+  --c-gray-400: #3A3A3F;
+  --c-gray-500: #71717A;
+  --c-gray-600: #A1A1AA;
+  --c-gray-700: #D4D4D8;
+  --c-gray-800: #E4E4E7;
+  --c-gray-900: #F4F4F5;
+  --c-primary-bg: rgba(108,99,255,.18);
+  --s-sm: 0 1px 3px rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.4);
+  --s-md: 0 4px 12px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.45);
+  --s-lg: 0 10px 30px rgba(0,0,0,.5);
+}
+
 * { margin:0; padding:0; box-sizing:border-box; border:none; outline:none; }
 html, body {
   width:100%; height:100%;
@@ -874,8 +893,8 @@ mark.hl {
 }
 .palette {
   width: min(560px, 92vw);
-  background: var(--color-bg, #1e1f24);
-  border: 1px solid rgba(255,255,255,.12);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
   box-shadow: 0 12px 40px rgba(0,0,0,.45);
   overflow: hidden;
@@ -885,13 +904,13 @@ mark.hl {
   box-sizing: border-box;
   padding: 14px 16px;
   font-size: 15px;
-  color: var(--color-text, #eee);
-  background: rgba(255,255,255,.06);
+  color: var(--color-text);
+  background: var(--color-surface-hover);
   border: none;
-  border-bottom: 1px solid rgba(255,255,255,.1);
+  border-bottom: 1px solid var(--color-border);
   outline: none;
 }
-.palette-input::placeholder { color: rgba(255,255,255,.35) }
+.palette-input::placeholder { color: var(--color-text-muted) }
 .palette-list { max-height: 420px; overflow-y: auto; padding: 6px; }
 .palette-row {
   display: flex;
@@ -903,41 +922,41 @@ mark.hl {
   cursor: pointer;
   font-size: 14px;
 }
-.palette-row.active { background: rgba(255,255,255,.12) }
+.palette-row.active { background: var(--color-primary-light) }
 .palette-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 }
-.palette-row-hint { color: rgba(255,255,255,.4); font-size: 12px; flex-shrink: 0 }
-.palette-tip { padding: 16px; text-align: center; color: rgba(255,255,255,.4); font-size: 13px }
+.palette-row-hint { color: var(--color-text-muted); font-size: 12px; flex-shrink: 0 }
+.palette-tip { padding: 16px; text-align: center; color: var(--color-text-muted); font-size: 13px }
 .palette-result { padding: 14px 16px; max-height: 380px; overflow-y: auto; }
-.palette-result-title { font-size: 13px; color: rgba(255,255,255,.55); margin-bottom: 8px }
-.palette-result-loading { color: rgba(255,255,255,.6); font-size: 14px }
-.palette-result-text { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--color-text, #eee) }
+.palette-result-title { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px }
+.palette-result-loading { color: var(--color-text-secondary); font-size: 14px }
+.palette-result-text { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--color-text) }
 .palette-result-actions { display: flex; gap: 8px; margin-top: 12px }
 .palette-btn {
   padding: 7px 14px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.08);
-  color: var(--color-text, #eee);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
   font-size: 13px;
   cursor: pointer;
 }
-.palette-btn:hover { background: rgba(255,255,255,.16) }
+.palette-btn:hover { background: var(--color-surface-active) }
 
 /* ====== Hotkey capture ====== */
 .hotkey-box {
   min-width: 150px;
   padding: 7px 12px;
   border-radius: 8px;
-  border: 1px solid rgba(255,255,255,.2);
-  background: rgba(255,255,255,.08);
-  color: var(--color-text, #eee);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
   font-size: 13px;
   font-family: Consolas, monospace;
   cursor: pointer;
   text-align: center;
 }
-.hotkey-box:hover { background: rgba(255,255,255,.15) }
-.setting-hint { padding: 4px 0 8px; font-size: 12px; color: rgba(255,255,255,.5) }
+.hotkey-box:hover { background: var(--color-surface-active) }
+.setting-hint { padding: 4px 0 8px; font-size: 12px; color: var(--color-text-muted) }
 
 /* ====== Note reminders + Markdown ====== */
 .note-reminder-row {
@@ -1018,3 +1037,28 @@ mark.hl {
 .skin-name { font-size: 12px; color: var(--color-text, #eee) }
 .skin-desc { font-size: 10px; color: rgba(255,255,255,.45); text-align: center }
 .task-done { opacity: .75 }
+
+/* ====== Right-click context menu ====== */
+.ctx-menu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 150px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.ctx-menu button {
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--color-text);
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ctx-menu button:hover { background: var(--color-surface-hover) }
+.ctx-menu button.ctx-danger { color: var(--color-danger) }

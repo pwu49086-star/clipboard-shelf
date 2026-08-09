@@ -1,4 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { BarChart3 } from 'lucide-react'
 
 export default function SettingsPanel({ onBack }) {
   const [autoStart, setAutoStart] = useState(false)
@@ -22,12 +23,23 @@ export default function SettingsPanel({ onBack }) {
   const [hotkeys, setHotkeys] = useState({ toggle: 'Ctrl+Alt+Space', palette: 'Ctrl+Alt+K' })
   const [captureKey, setCaptureKey] = useState(null)
   const [hotkeyMsg, setHotkeyMsg] = useState('')
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('cs-theme') || 'light' } catch { return 'light' }
+  })
+  const [stats, setStats] = useState(null)
 
   useEffect(() => {
     if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
+    if (window.api?.statsOverview) window.api.statsOverview().then(setStats).catch(() => {})
   }, [])
 
   const startCapture = (key) => { setCaptureKey(key); setHotkeyMsg('请按下新快捷键…') }
+
+  const handleTheme = (v) => {
+    setTheme(v)
+    document.documentElement.dataset.theme = v
+    try { localStorage.setItem('cs-theme', v) } catch {}
+  }
 
   useEffect(() => {
     if (!captureKey) return
@@ -114,6 +126,34 @@ export default function SettingsPanel({ onBack }) {
         <span className="settings-title">设置</span>
       </div>
       <div className="settings-body">
+        <div className="setting-group">
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">深色模式</span>
+              <span className="setting-desc">切换浅色 / 深色主题</span>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={theme === 'dark'} onChange={e => handleTheme(e.target.checked ? 'dark' : 'light')} />
+              <span className="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row"><div className="setting-label"><span className="setting-name"><BarChart3 size={14} style={{marginRight:6}} />数据统计</span></div></div>
+          {stats ? (
+            <div className="stats-grid">
+              <div className="stat-item"><span className="stat-value">{stats.total}</span><span className="stat-label">总记录</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.favorites}</span><span className="stat-label">收藏</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.text}</span><span className="stat-label">文字</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.image}</span><span className="stat-label">图片</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.todayNew}</span><span className="stat-label">今日新增</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.notes}</span><span className="stat-label">便签</span></div>
+              <div className="stat-item"><span className="stat-value">{stats.backups}</span><span className="stat-label">备份</span></div>
+            </div>
+          ) : <div className="setting-hint">加载中…</div>}
+        </div>
+
         <div className="setting-group">
           <div className="setting-row">
             <div className="setting-label">
