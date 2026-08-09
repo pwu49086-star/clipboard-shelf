@@ -16,6 +16,8 @@ const ACHIEVES = [
 export default function PetSettings({ onBack }) {
   const [stats, setStats] = useState({ copies: 0, favorites: 0, days: 0, level: 1, mood: 80, energy: 100, curiosity: 50, favor: 0 })
   const [tab, setTab] = useState('info')
+  const [tasks, setTasks] = useState(null)
+  const [skinMsg, setSkinMsg] = useState('')
 
   useEffect(() => {
     try {
@@ -32,6 +34,10 @@ export default function PetSettings({ onBack }) {
     } catch {}
   }, [])
 
+  useEffect(() => {
+    if (window.api?.tasksGetState) window.api.tasksGetState().then(setTasks).catch(() => {})
+  }, [])
+
   return (
     <div className="app">
       <div className="settings-header">
@@ -42,6 +48,7 @@ export default function PetSettings({ onBack }) {
       <div className="pet-tabs">
         <button className={`pet-tab ${tab === 'info' ? 'active' : ''}`} onClick={() => setTab('info')}>状态</button>
         <button className={`pet-tab ${tab === 'achieve' ? 'active' : ''}`} onClick={() => setTab('achieve')}>成就</button>
+        <button className={`pet-tab ${tab === 'tasks' ? 'active' : ''}`} onClick={() => setTab('tasks')}>任务</button>
       </div>
 
       <div className="settings-body">
@@ -114,6 +121,62 @@ export default function PetSettings({ onBack }) {
                 <div className="guide-item"><span className="guide-icon"><ChevronRight size={14} /></span><div className="guide-content"><div className="guide-item-title">点击</div><div className="guide-item-desc">展开主窗口</div></div></div>
                 <div className="guide-item"><span className="guide-icon"><Move size={14} /></span><div className="guide-content"><div className="guide-item-title">拖拽</div><div className="guide-item-desc">移动宠物位置</div></div></div>
               </div>
+            </div>
+          </>
+        )}
+
+        {tab === 'tasks' && (
+          <>
+            <div className="setting-group">
+              <div className="setting-row"><div className="setting-label"><span className="setting-name"><Calendar size={14} style={{marginRight:6}} />今日任务</span></div></div>
+              {tasks ? tasks.tasks.map(t => {
+                const done = !!tasks.done[t.key]
+                const val = tasks.counts[t.countKey] || 0
+                const progress = Math.min(100, Math.round(val / t.need * 100))
+                return (
+                  <div key={t.key} className={`guide-item ${done ? 'task-done' : ''}`}>
+                    <span className="guide-icon">{done ? <span style={{fontSize:14}}>✅</span> : <Trophy size={14} />}</span>
+                    <div className="guide-content">
+                      <div className="guide-item-title">{t.name}{done ? '（已完成）' : ''}</div>
+                      <div className="guide-item-desc">{t.desc} ({val}/{t.need})</div>
+                      {!done && <div className="achieve-progress"><div className="achieve-bar" style={{ width: progress + '%' }}></div></div>}
+                    </div>
+                  </div>
+                )
+              }) : <div className="setting-hint">加载中…</div>}
+              {tasks && <div className="setting-hint">已收集 {tasks.points} / {tasks.tasks.length} 颗星</div>}
+            </div>
+
+            <div className="setting-group">
+              <div className="setting-row"><div className="setting-label"><span className="setting-name"><Star size={14} style={{marginRight:6}} />皮肤</span></div></div>
+              <div className="skin-grid">
+                {tasks ? tasks.skins.map(s => {
+                  const unlocked = tasks.unlocked.includes(s.id)
+                  let activeSkin = 'default'
+                  try { activeSkin = localStorage.getItem('pet-skin') || 'default' } catch {}
+                  return (
+                    <button
+                      key={s.id}
+                      className={`skin-cell ${unlocked ? '' : 'locked'} ${activeSkin === s.id ? 'active' : ''}`}
+                      disabled={!unlocked}
+                      onClick={async () => {
+                        const r = await window.api.tasksSelectSkin(s.id)
+                        if (r && r.error) setSkinMsg(r.error)
+                        else {
+                          try { localStorage.setItem('pet-skin', s.id) } catch {}
+                          setSkinMsg('已切换到 ' + s.name)
+                          setTasks(await window.api.tasksGetState())
+                        }
+                      }}
+                    >
+                      <span className={`skin-dot skin-${s.id}`}></span>
+                      <span className="skin-name">{s.name}</span>
+                      <span className="skin-desc">{unlocked ? s.desc : '🔒 未解锁'}</span>
+                    </button>
+                  )
+                }) : <div className="setting-hint">加载中…</div>}
+              </div>
+              {skinMsg && <div className="setting-hint">{skinMsg}</div>}
             </div>
           </>
         )}

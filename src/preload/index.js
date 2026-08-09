@@ -58,6 +58,11 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('palette:toggle', handler)
   },
 
+  // 宠物任务
+  tasksGetState: () => ipcRenderer.invoke('tasks:getState'),
+  tasksBump: (key) => ipcRenderer.invoke('tasks:bump', key),
+  tasksSelectSkin: (skin) => ipcRenderer.invoke('tasks:selectSkin', skin),
+
   // 开机自启
   setAutoStart: (enabled) => ipcRenderer.invoke('settings:setAutoStart', enabled),
   getAutoStart: () => ipcRenderer.invoke('settings:getAutoStart'),

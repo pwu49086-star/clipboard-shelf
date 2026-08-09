@@ -14,6 +14,7 @@ const db = require('./services/db-service')
 const clipboardPipeline = require('./services/clipboard-pipeline')
 const ocrService = require('./services/ocr-service')
 const petEngine = require('./pet/pet-engine')
+const petTasks = require('./pet-tasks')
 
 // ====== Crash Log ======
 const logPath = path.join(app.getPath('userData'), 'crash.log')
@@ -253,6 +254,12 @@ function createPetWindow() {
     ? path.join(__dirname, '../renderer/pet.html')
     : path.join(__dirname, '../../src/renderer/pet.html')
   petWindow.loadFile(petPath)
+
+  petWindow.webContents.once('did-finish-load', () => {
+    if (config.petSkin && petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('pet:setSkin', config.petSkin)
+    }
+  })
 
   petWindow.on('closed', () => { petWindow = null; stopMouseTracking() })
   return petWindow
@@ -507,6 +514,18 @@ function setupIPC() {
     }
     return { ok: true }
   })
+
+  // 宠物任务
+  ipcMain.handle('tasks:getState', () => petTasks.getState())
+  ipcMain.handle('tasks:bump', (e, key) => petTasks.bump(key))
+  ipcMain.handle('tasks:selectSkin', (e, skin) => {
+    const st = petTasks.getState()
+    if (!st.unlocked.includes(skin)) return { error: '皮肤未解锁' }
+    config.petSkin = skin
+    saveConfig()
+    if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('pet:setSkin', skin)
+    return { ok: true }
+  })
 }
 
 // ====== Event Bus Wiring ======
@@ -542,6 +561,11 @@ function wireEvents() {
   eventBus.on(Events.DB_FAVORITE, (data) => {
     sendToPet('pet:favorite', data)
   })
+
+  // 任务完成 → 宠物庆祝
+  eventBus.on(Events.PET_TASK_DONE, (data) => {
+    sendToPet('pet:task-done', data)
+  })
 }
 
 // ====== App Lifecycle ======
@@ -574,6 +598,7 @@ app.whenReady().then(async () => {
   await db.init()
   ocrService.init()
   petEngine.init()
+  petTasks.init()
 
   // 初始化 Memory 系统
   memoryStore.init()

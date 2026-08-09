@@ -995,3 +995,26 @@ mark.hl {
   color: rgba(0,0,0,.65);
 }
 .note-card-content.markdown a { color: #1a5fb4; text-decoration: underline }
+
+/* ====== Pet tasks + skins ====== */
+.skin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 4px 0 }
+.skin-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 10px 6px; border: 1px solid rgba(255,255,255,.15);
+  border-radius: 10px; background: rgba(255,255,255,.06); cursor: pointer;
+}
+.skin-cell.active { border-color: #ffd200; background: rgba(255,210,0,.12) }
+.skin-cell.locked { opacity: .45; cursor: not-allowed }
+.skin-dot {
+  width: 34px; height: 30px;
+  border-radius: 50% 50% 46% 46% / 55% 55% 45% 45%;
+  background: radial-gradient(ellipse at 35% 30%, rgba(168,230,255,.95), rgba(203,166,255,.6));
+}
+.skin-dot.skin-snow { background: radial-gradient(ellipse at 35% 30%, rgba(220,240,255,.95), rgba(150,200,255,.65)) }
+.skin-dot.skin-gold { background: radial-gradient(ellipse at 35% 30%, rgba(255,240,180,.95), rgba(255,190,90,.65)) }
+.skin-dot.skin-mint { background: radial-gradient(ellipse at 35% 30%, rgba(200,255,220,.95), rgba(120,220,170,.65)) }
+.skin-dot.skin-lava { background: radial-gradient(ellipse at 35% 30%, rgba(255,200,170,.95), rgba(255,110,80,.65)) }
+.skin-dot.skin-nebula { background: radial-gradient(ellipse at 35% 30%, rgba(210,190,255,.95), rgba(130,110,255,.65)) }
+.skin-name { font-size: 12px; color: var(--color-text, #eee) }
+.skin-desc { font-size: 10px; color: rgba(255,255,255,.45); text-align: center }
+.task-done { opacity: .75 }

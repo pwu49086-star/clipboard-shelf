@@ -28,6 +28,7 @@ const Events = {
   DB_FLUSH:          { name: 'db:flush',          tier: Tier.SYSTEM },
   OCR_JOB:           { name: 'ocr:job',           tier: Tier.SYSTEM },
   OCR_DONE:          { name: 'ocr:done',          tier: Tier.SYSTEM },
+  SCREENSHOT:        { name: 'screenshot',        tier: Tier.SYSTEM },
   FILE_SAVE:         { name: 'file:save',         tier: Tier.SYSTEM },
   FILE_DELETE:       { name: 'file:delete',       tier: Tier.SYSTEM },
 
@@ -46,6 +47,7 @@ const Events = {
   PET_MOOD:          { name: 'pet:mood',           tier: Tier.DOMAIN },
   PET_FAVOR:         { name: 'pet:favor',          tier: Tier.DOMAIN },
   PET_LEVEL:         { name: 'pet:level',          tier: Tier.DOMAIN },
+  PET_TASK_DONE:     { name: 'pet:task-done',      tier: Tier.DOMAIN },
   USER_ACTIVE:       { name: 'user:active',        tier: Tier.DOMAIN },
   USER_IDLE:         { name: 'user:idle',          tier: Tier.DOMAIN },
   USER_TYPING:       { name: 'user:typing',        tier: Tier.DOMAIN },

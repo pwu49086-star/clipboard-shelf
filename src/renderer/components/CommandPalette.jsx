@@ -78,6 +78,7 @@ export default function CommandPalette({ open, onClose }) {
     setResult(null)
     setActive(0)
     load('')
+    try { window.api.tasksBump('palette') } catch {}
     setTimeout(() => inputRef.current?.focus(), 30)
   }, [open, load])
 

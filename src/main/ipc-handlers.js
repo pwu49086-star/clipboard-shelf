@@ -345,6 +345,7 @@ function setup(mainWindow) {
       if (item) {
         eventBus.emit(Events.DB_INSERT, item)
         eventBus.emit(Events.OCR_JOB, { filePath: fullPath, itemId: item.id })
+        eventBus.emit(Events.SCREENSHOT, {})
       }
       overlay.close()
       mainWindow.show(); mainWindow.focus()
