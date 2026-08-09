@@ -8,14 +8,15 @@
   "scripts": {
     "dev": "node dev.mjs",
     "build": "node build.mjs",
-    "build:win": "node build.mjs && electron-builder --win",
+    "build:win": "node build.mjs && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/rebuild-electron.ps1 && electron-builder --win",
     "fix-meta": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fix-exe-meta.ps1",
     "build:win:local": "npm run build:win && npm run fix-meta",
+    "pretest": "npm rebuild better-sqlite3",
     "test": "node --test"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9",
-    "sql.js": "^1.11.0"
+    "better-sqlite3": "^12.11.1",
+    "electron-updater": "^6.8.9"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^29.0.3",
