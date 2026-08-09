@@ -18,11 +18,37 @@ let saveTimer = null
 const SAVE_DEBOUNCE = 1000 // 1s 防抖（从 500ms 增加）
 
 // ====== Init ======
+function backupDatabase() {
+  try {
+    if (!dbPath || !fs.existsSync(dbPath)) return
+    const backupDir = path.join(app.getPath('userData'), 'backups')
+    fs.mkdirSync(backupDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    fs.copyFileSync(dbPath, path.join(backupDir, `shelf-${ts}.db`))
+    const cfgSrc = path.join(app.getPath('userData'), 'config.json')
+    if (fs.existsSync(cfgSrc)) {
+      fs.copyFileSync(cfgSrc, path.join(backupDir, `config-${ts}.json`))
+    }
+    // 只保留最近 5 份数据库备份
+    const backups = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith('shelf-') && f.endsWith('.db'))
+      .sort()
+    while (backups.length > 5) {
+      fs.unlinkSync(path.join(backupDir, backups.shift()))
+    }
+  } catch (err) {
+    console.error('[DBService] Backup error:', err.message)
+  }
+}
+
 async function init() {
   const SQL = await initSqlJs()
   const userData = app.getPath('userData')
   fs.mkdirSync(userData, { recursive: true })
   dbPath = path.join(userData, 'shelf.db')
+
+  // 启动时自动备份上一份数据库和配置（保留最近 5 份）
+  backupDatabase()
 
   if (fs.existsSync(dbPath)) {
     const buffer = fs.readFileSync(dbPath)

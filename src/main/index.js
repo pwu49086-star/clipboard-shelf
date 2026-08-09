@@ -17,8 +17,17 @@ const petEngine = require('./pet/pet-engine')
 
 // ====== Crash Log ======
 const logPath = path.join(app.getPath('userData'), 'crash.log')
+function appendCrashLog(text) {
+  try {
+    const MAX_LOG_SIZE = 1024 * 1024 // 1MB
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > MAX_LOG_SIZE) {
+      fs.renameSync(logPath, logPath + '.old')
+    }
+    fs.appendFileSync(logPath, text)
+  } catch {}
+}
 process.on('uncaughtException', (err) => {
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] UNCAUGHT: ${err.stack || err}\n`)
+  appendCrashLog(`[${new Date().toISOString()}] UNCAUGHT: ${err.stack || err}\n`)
   // 紧急保存数据库，防止数据丢失
   try { db.close() } catch {}
   // 未捕获异常后进程状态不可靠，记录后退出
@@ -31,7 +40,7 @@ process.on('uncaughtException', (err) => {
   app.exit(1)
 })
 process.on('unhandledRejection', (reason) => {
-  fs.appendFileSync(logPath, `[${new Date().toISOString()}] UNHANDLED REJECTION: ${reason}\n`)
+  appendCrashLog(`[${new Date().toISOString()}] UNHANDLED REJECTION: ${reason}\n`)
 })
 
 // ====== Core ======
