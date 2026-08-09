@@ -331,10 +331,11 @@ function setup(mainWindow) {
       fs.mkdirSync(path.join(imagesDir, 'full'), { recursive: true })
       fs.mkdirSync(path.join(imagesDir, 'thumb'), { recursive: true })
       const filename = 'screenshot_' + Date.now() + '.png'
+      const thumbName = 'screenshot_' + Date.now() + '.jpg'
       const fullPath = path.join(imagesDir, 'full', filename)
-      const thumbPath = path.join(imagesDir, 'thumb', filename)
+      const thumbPath = path.join(imagesDir, 'thumb', thumbName)
       fs.writeFileSync(fullPath, cropped.toPNG())
-      fs.writeFileSync(thumbPath, cropped.resize({ width: 200 }).toPNG())
+      fs.writeFileSync(thumbPath, cropped.resize({ width: 200 }).toJPEG(80))
       const item = db.insert({
         type: 'image', content: filename, filePath: fullPath,
         thumbPath: thumbPath, ocrText: null, createTime: Date.now(),
@@ -408,6 +409,13 @@ function setup(mainWindow) {
       console.warn('[Translate] disabled (config.allowOnlineTranslate = false)')
       return null
     }
+    if (config.aiApiKey) {
+      try {
+        const target = to === 'zh' ? 'Simplified Chinese' : 'English'
+        const aiResult = await aiChat([{ role: 'system', content: 'You are a professional translator. Reply with only the translation, no explanations.' }, { role: 'user', content: `Translate the following text into ${target}:\n\n${text}` }], 2000)
+        if (aiResult && aiResult.trim()) return aiResult.trim()
+      } catch (e) { console.warn('[Translate] AI failed, fallback to online:', e.message) }
+    }
     const { net } = require('electron')
     function fetchUrl(url, timeoutMs = 10000) {
       return new Promise((resolve, reject) => {
@@ -465,18 +473,58 @@ function setup(mainWindow) {
   })
 }
 
+// ====== AI (DeepSeek) ======
+async function aiChat(messages, maxTokens = 2000) {
+  const { net } = require('electron')
+  const baseUrl = (config.aiBaseUrl || 'https://api.deepseek.com').replace(/\/+$/, '')
+  const url = baseUrl + '/chat/completions'
+  const body = JSON.stringify({ model: config.aiModel || 'deepseek-chat', messages, temperature: 0.3, max_tokens: maxTokens })
+  return new Promise((resolve, reject) => {
+    const req = net.request({ url, method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (config.aiApiKey || '') } })
+    let data = ''
+    const timer = setTimeout(() => { req.abort(); reject(new Error('AI timeout')) }, 60000)
+    req.on('response', (res) => {
+      res.on('data', c => { data += c.toString() })
+      res.on('end', () => { clearTimeout(timer); try { const j = JSON.parse(data); resolve((j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || null) } catch (e) { reject(e) } })
+    })
+    req.on('error', (e) => { clearTimeout(timer); reject(e) })
+    req.end(body)
+  })
+}
+
+// AI 一键处理（翻译/总结/解释/工单）
+ipcMain.handle('ai:process', async (event, payload) => {
+  const { action, text } = payload || {}
+  if (!text || !text.trim()) return { error: '没有可处理的文本' }
+  if (!config.aiApiKey) return { error: '未配置 aiApiKey（config.json）' }
+  const prompts = {
+    translate: 'Translate the following text into Simplified Chinese if it is not Chinese, otherwise into English. Reply with only the translation.\n\n' + text,
+    summary: '用简洁中文总结以下内容的要点，分点列出，不要遗漏关键信息。\n\n' + text,
+    explain: '用通俗中文解释以下内容，适合空调维修技术人员理解。\n\n' + text,
+    workorder: '根据以下内容生成一份中文维修工单草稿，包含：客户/机型/故障现象/可能原因/处理步骤/所需配件/备注，缺的字段留空。\n\n' + text
+  }
+  const prompt = prompts[action] || prompts.summary
+  try {
+    const result = await aiChat([{ role: 'user', content: prompt }], 2500)
+    return result ? { text: result } : { error: 'AI 无返回' }
+  } catch (e) {
+    return { error: 'AI 请求失败: ' + e.message }
+  }
+})
+
 // ====== Helper Functions ======
 function handleImportImage(base64, filename) {
   const buffer = Buffer.from(base64, 'base64')
   const name = `import_${Date.now()}_${filename || 'image.png'}`
+  const thumbName = name.replace(/\.(png|jpg|jpeg|bmp|gif|webp)$/i, '.jpg')
   const fullPath = path.join(imagesDir, 'full', name)
-  const thumbPath = path.join(imagesDir, 'thumb', name)
+  const thumbPath = path.join(imagesDir, 'thumb', thumbName)
   fs.mkdirSync(path.join(imagesDir, 'full'), { recursive: true })
   fs.mkdirSync(path.join(imagesDir, 'thumb'), { recursive: true })
   fs.writeFileSync(fullPath, buffer)
   const nativeImg = nativeImage.createFromBuffer(buffer)
   if (!nativeImg.isEmpty()) {
-    fs.writeFileSync(thumbPath, nativeImg.resize({ width: 200 }).toPNG())
+    fs.writeFileSync(thumbPath, nativeImg.resize({ width: 200 }).toJPEG(80))
   }
   const stat = fs.statSync(fullPath)
   const size = nativeImg.getSize()

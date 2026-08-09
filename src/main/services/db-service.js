@@ -181,7 +181,7 @@ function getAll({ search = '', limit = 200 } = {}) {
     const q = `%${escaped}%`
     const stmt = db.prepare(`
       SELECT * FROM items
-      WHERE content LIKE ? ESCAPE '\' OR ocrText LIKE ? ESCAPE '\'
+      WHERE content LIKE ? ESCAPE '\\' OR ocrText LIKE ? ESCAPE '\\'
       ORDER BY isFavorite DESC, createTime DESC
       LIMIT ?
     `)

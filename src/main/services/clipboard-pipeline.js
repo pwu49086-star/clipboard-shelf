@@ -104,9 +104,11 @@ async function processItem(item) {
 // ====== Save Image ======
 function saveImage(img, cachedPngBuffer) {
   try {
-    const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
+    const base = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const filename = `${base}.png`
     const fullPath = path.join(imagesDir, 'full', filename)
-    const thumbPath = path.join(imagesDir, 'thumb', filename)
+    const thumbName = `${base}.jpg`
+    const thumbPath = path.join(imagesDir, 'thumb', thumbName)
 
     // setImageDir() 已保证目录存在，无需重复创建
 
@@ -115,7 +117,7 @@ function saveImage(img, cachedPngBuffer) {
 
     // 缩略图 200px
     const thumb = img.resize({ width: 200 })
-    fs.writeFileSync(thumbPath, thumb.toPNG())
+    fs.writeFileSync(thumbPath, thumb.toJPEG(80))
 
     const size = img.getSize()
     const stat = fs.statSync(fullPath)

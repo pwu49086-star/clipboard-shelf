@@ -1,4 +1,4 @@
-﻿const { contextBridge, ipcRenderer } = require('electron')
+const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('api', {
   // 获取所有项目
@@ -42,6 +42,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // 翻译
   translateText: (text, from, to) => ipcRenderer.invoke('translate:text', text, from, to),
+
+  // AI 一键处理（翻译/总结/解释/工单）
+  aiProcess: (payload) => ipcRenderer.invoke('ai:process', payload),
 
   // 开机自启
   setAutoStart: (enabled) => ipcRenderer.invoke('settings:setAutoStart', enabled),

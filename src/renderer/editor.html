@@ -362,6 +362,14 @@ canvas { display: block; box-shadow: 0 4px 16px rgba(0,0,0,.1); cursor: crosshai
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8l6 6M4 14l6-6 2-3M2 5h12M7 2h1"/></svg>
           翻译
         </button>
+        <button class="result-btn translate" id="btnAISummary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.2L22 12l-7.6 2.8L12 22l-2.4-7.2L2 12l7.6-2.8z"/></svg>
+          AI总结
+        </button>
+        <button class="result-btn translate" id="btnAIWorkorder">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5h6M9 9h6M9 13h4"/><rect x="4" y="3" width="16" height="18" rx="2"/></svg>
+          生成工单
+        </button>
       </div>
       <div class="translate-section" id="translateSection" style="display:none">
         <div class="translate-lang" id="translateLang"></div>
@@ -721,6 +729,8 @@ async function doOCRFullImage() {
     resultText.textContent = ocrText || '未识别到文字'
     showPanel('提取文字', '识别结果')
     document.getElementById('btnDoTranslate').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAISummary').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAIWorkorder').style.display = ocrText ? 'flex' : 'none'
   } catch { resultText.textContent = '识别失败'; showPanel('提取文字', '识别结果') }
 }
 
@@ -750,6 +760,8 @@ async function doTranslateFullImage() {
     }
     showPanel('翻译结果', '原文')
     document.getElementById('btnDoTranslate').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAISummary').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAIWorkorder').style.display = ocrText ? 'flex' : 'none'
   } catch { resultText.textContent = '识别失败'; showPanel('翻译结果', '识别结果') }
 }
 
@@ -783,6 +795,20 @@ document.getElementById('btnDoTranslate').addEventListener('click', async () => 
   } catch { translateResult.textContent = '翻译失败' }
 })
 
+async function doAI(action) {
+  if (!ocrText) return
+  translateSection.style.display = 'block'
+  translateLang.textContent = 'AI'
+  translateResult.textContent = 'AI 处理中…'
+  try {
+    const result = await ipcRenderer.invoke('ai:process', { action, text: ocrText })
+    translateResult.textContent = (result && result.text) || (result && result.error) || '处理失败'
+    autoResize(translateResult)
+  } catch { translateResult.textContent = '处理失败' }
+}
+document.getElementById('btnAISummary').addEventListener('click', () => doAI('summary'))
+document.getElementById('btnAIWorkorder').addEventListener('click', () => doAI('workorder'))
+
 document.getElementById('btnCopyTranslated').addEventListener('click', async () => {
   const text = translateResult.textContent
   if (text && text !== '正在翻译…') {
@@ -813,6 +839,8 @@ async function doTranslate(x1, y1, x2, y2) {
     resultText.textContent = ocrText || '未识别到文字'
     showPanel('翻译结果', '原文')
     document.getElementById('btnDoTranslate').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAISummary').style.display = ocrText ? 'flex' : 'none'
+    document.getElementById('btnAIWorkorder').style.display = ocrText ? 'flex' : 'none'
 
     // 自动翻译
     if (ocrText) {
