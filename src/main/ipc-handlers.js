@@ -392,6 +392,18 @@ function setup(mainWindow) {
   ipcMain.handle('settings:setAutoStart', (event, enabled) => { app.setLoginItemSettings({ openAtLogin: enabled }) })
   ipcMain.handle('settings:getAutoStart', () => app.getLoginItemSettings().openAtLogin)
 
+  // 剪贴板读取（命令面板用）
+  ipcMain.handle('clipboard:readText', () => clipboard.readText())
+
+  // 打开外部文件夹（命令面板用）
+  ipcMain.handle('system:openPath', (e, p) => {
+    if (p && fs.existsSync(p)) { shell.openPath(p); return true }
+    return false
+  })
+
+  // 清空非收藏（命令面板用）
+  ipcMain.handle('items:clearNonFavorites', () => { db.clearNonFavorites(); return true })
+
   // Pet behaviors: read in main process (renderer has no file access)
   ipcMain.handle('pet:getBehaviors', () => {
     const candidates = app.isPackaged

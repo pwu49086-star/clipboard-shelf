@@ -859,3 +859,82 @@ mark.hl {
 }
 .preview-btn:hover { background: rgba(255,255,255,.25); }
 @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+
+/* ====== Command Palette ====== */
+.palette-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  z-index: 1000;
+  animation: fadeIn .12s ease;
+}
+.palette {
+  width: min(560px, 92vw);
+  background: var(--color-bg, #1e1f24);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  overflow: hidden;
+}
+.palette-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: var(--color-text, #eee);
+  background: rgba(255,255,255,.06);
+  border: none;
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  outline: none;
+}
+.palette-input::placeholder { color: rgba(255,255,255,.35) }
+.palette-list { max-height: 420px; overflow-y: auto; padding: 6px; }
+.palette-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.palette-row.active { background: rgba(255,255,255,.12) }
+.palette-row-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 }
+.palette-row-hint { color: rgba(255,255,255,.4); font-size: 12px; flex-shrink: 0 }
+.palette-tip { padding: 16px; text-align: center; color: rgba(255,255,255,.4); font-size: 13px }
+.palette-result { padding: 14px 16px; max-height: 380px; overflow-y: auto; }
+.palette-result-title { font-size: 13px; color: rgba(255,255,255,.55); margin-bottom: 8px }
+.palette-result-loading { color: rgba(255,255,255,.6); font-size: 14px }
+.palette-result-text { font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; color: var(--color-text, #eee) }
+.palette-result-actions { display: flex; gap: 8px; margin-top: 12px }
+.palette-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.08);
+  color: var(--color-text, #eee);
+  font-size: 13px;
+  cursor: pointer;
+}
+.palette-btn:hover { background: rgba(255,255,255,.16) }
+
+/* ====== Hotkey capture ====== */
+.hotkey-box {
+  min-width: 150px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.2);
+  background: rgba(255,255,255,.08);
+  color: var(--color-text, #eee);
+  font-size: 13px;
+  font-family: Consolas, monospace;
+  cursor: pointer;
+  text-align: center;
+}
+.hotkey-box:hover { background: rgba(255,255,255,.15) }
+.setting-hint { padding: 4px 0 8px; font-size: 12px; color: rgba(255,255,255,.5) }

@@ -46,6 +46,18 @@ contextBridge.exposeInMainWorld('api', {
   // AI 一键处理（翻译/总结/解释/工单）
   aiProcess: (payload) => ipcRenderer.invoke('ai:process', payload),
 
+  // 命令面板
+  readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),
+  openPath: (p) => ipcRenderer.invoke('system:openPath', p),
+  clearHistory: () => ipcRenderer.invoke('items:clearNonFavorites'),
+  getHotkeys: () => ipcRenderer.invoke('settings:getHotkeys'),
+  setHotkey: (key, value) => ipcRenderer.invoke('settings:setHotkey', key, value),
+  onPaletteToggle: (callback) => {
+    const handler = () => callback()
+    ipcRenderer.on('palette:toggle', handler)
+    return () => ipcRenderer.removeListener('palette:toggle', handler)
+  },
+
   // 开机自启
   setAutoStart: (enabled) => ipcRenderer.invoke('settings:setAutoStart', enabled),
   getAutoStart: () => ipcRenderer.invoke('settings:getAutoStart'),

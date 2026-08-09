@@ -19,6 +19,43 @@ export default function SettingsPanel({ onBack }) {
     } catch {}
   }, [])
 
+  const [hotkeys, setHotkeys] = useState({ toggle: 'Ctrl+Alt+Space', palette: 'Ctrl+Alt+K' })
+  const [captureKey, setCaptureKey] = useState(null)
+  const [hotkeyMsg, setHotkeyMsg] = useState('')
+
+  useEffect(() => {
+    if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
+  }, [])
+
+  const startCapture = (key) => { setCaptureKey(key); setHotkeyMsg('请按下新快捷键…') }
+
+  useEffect(() => {
+    if (!captureKey) return
+    const handleCapture = (e) => {
+      e.preventDefault(); e.stopPropagation()
+      const mods = []
+      if (e.ctrlKey) mods.push('Ctrl')
+      if (e.altKey) mods.push('Alt')
+      if (e.shiftKey) mods.push('Shift')
+      if (e.metaKey) mods.push('Super')
+      const special = { ' ': 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Escape: 'Esc', Enter: 'Enter', Tab: 'Tab' }
+      const key = e.key.length === 1 ? e.key.toUpperCase() : (special[e.key] || e.key)
+      if (!mods.length || ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) { setHotkeyMsg('至少需要一个修饰键（Ctrl/Alt/Shift）'); return }
+      const accel = [...mods, key].join('+')
+      if (captureKey === 'palette' && accel === hotkeys.toggle) { setHotkeyMsg('不能与“呼出/隐藏窗口”相同'); return }
+      if (captureKey === 'toggle' && accel === hotkeys.palette) { setHotkeyMsg('不能与“命令面板”相同'); return }
+      setHotkeyMsg('保存中…')
+      setCaptureKey(null)
+      window.api.setHotkey(captureKey, accel).then(r => {
+        if (r && r.error) { setHotkeyMsg(r.error); return }
+        setHotkeys(h => ({ ...h, [captureKey]: accel }))
+        setHotkeyMsg('已保存')
+      })
+    }
+    window.addEventListener('keydown', handleCapture, true)
+    return () => window.removeEventListener('keydown', handleCapture, true)
+  }, [captureKey, hotkeys])
+
   const handleAutoStart = (v) => {
     setAutoStart(v)
     try {
@@ -103,11 +140,23 @@ export default function SettingsPanel({ onBack }) {
         <div className="setting-group">
           <div className="setting-row">
             <div className="setting-label">
-              <span className="setting-name">全局快捷键</span>
-              <span className="setting-desc">呼出/隐藏窗口</span>
+              <span className="setting-name">呼出/隐藏窗口</span>
+              <span className="setting-desc">全局快捷键</span>
             </div>
-            <span className="setting-value">Ctrl+Alt+Space</span>
+            <button className="hotkey-box" onClick={() => startCapture('toggle')}>
+              {captureKey === 'toggle' ? '按下快捷键…' : hotkeys.toggle}
+            </button>
           </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">命令面板</span>
+              <span className="setting-desc">全局快捷键</span>
+            </div>
+            <button className="hotkey-box" onClick={() => startCapture('palette')}>
+              {captureKey === 'palette' ? '按下快捷键…' : hotkeys.palette}
+            </button>
+          </div>
+          {hotkeyMsg && <div className="setting-hint">{hotkeyMsg}</div>}
         </div>
 
         <div className="setting-group">

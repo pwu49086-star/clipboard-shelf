@@ -56,6 +56,22 @@ function saveConfig() {
   }
 }
 
+function registerHotkeys() {
+  const h = config.hotkeys || { toggle: 'Ctrl+Alt+Space', palette: 'Ctrl+Alt+K' }
+  globalShortcut.unregisterAll()
+  let ok = true
+  try {
+    if (!globalShortcut.register(h.toggle, () => { if (isPetMode) switchToMainMode(); else switchToPetMode() })) ok = false
+    if (!globalShortcut.register(h.palette, () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (isPetMode) switchToMainMode()
+        mainWindow.webContents.send('palette:toggle')
+      }
+    })) ok = false
+  } catch { ok = false }
+  return ok
+}
+
 // ====== Window State ======
 let mainWindow = null
 let petWindow = null
@@ -460,19 +476,28 @@ function setupIPC() {
   })
 
   // 全局快捷键
-  const ret = globalShortcut.register('Ctrl+Alt+Space', () => {
-    if (isPetMode) switchToMainMode()
-    else switchToPetMode()
+  registerHotkeys()
+
+  // 快捷键设置
+  ipcMain.handle('settings:getHotkeys', () => config.hotkeys || { toggle: 'Ctrl+Alt+Space', palette: 'Ctrl+Alt+K' })
+  ipcMain.handle('settings:setHotkey', (e, key, value) => {
+    if (key !== 'toggle' && key !== 'palette') return { error: '无效的快捷键类型' }
+    const accel = String(value || '').trim()
+    if (!accel || !/^(Ctrl|Alt|Shift|Super)\+/.test(accel)) return { error: '快捷键格式无效（至少需要一个修饰键，如 Ctrl+Alt+K）' }
+    const defaults = { toggle: 'Ctrl+Alt+Space', palette: 'Ctrl+Alt+K' }
+    const next = { ...defaults, ...(config.hotkeys || {}), [key]: accel }
+    if (next.toggle === next.palette) return { error: '两个快捷键不能相同' }
+    const old = config.hotkeys || {}
+    config.hotkeys = next
+    saveConfig()
+    if (!registerHotkeys()) {
+      config.hotkeys = old
+      saveConfig()
+      registerHotkeys()
+      return { error: '快捷键注册失败，可能被其他程序占用' }
+    }
+    return { ok: true }
   })
-  if (!ret) {
-    dialog.showMessageBox({
-      type: 'warning',
-      title: '快捷键注册失败',
-      message: 'Ctrl+Alt+Space 快捷键注册失败',
-      detail: '可能被其他占用，可通过托盘图标打开。',
-      buttons: ['知道了']
-    })
-  }
 }
 
 // ====== Event Bus Wiring ======
