@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { ArrowLeft, Plus, Pin, Trash2, Copy, X, AlertTriangle, Check } from 'lucide-react'
+import { renderMarkdown } from '../markdown'
 
 const COLORS = [
   { name: '黄', value: '#f5f0a8' },
@@ -23,12 +24,26 @@ function formatTime(ts) {
   return `${month}/${day}`
 }
 
+function toLocalInput(ts) {
+  const d = new Date(ts)
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function formatRemind(ts) {
+  const d = new Date(ts)
+  const p = n => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
 export default function NotesPanel({ embedded, searchQuery, onBack }) {
   const [notes, setNotes] = useState([])
   const [editingId, setEditingId] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
   const [editColor, setEditColor] = useState('#f5f0a8')
+  const [editRemindAt, setEditRemindAt] = useState(null)
+  const [editRemindStr, setEditRemindStr] = useState('')
   const [saveStatus, setSaveStatus] = useState('saved') // saved | saving | error
   const contentRef = useRef(null)
   const saveTimer = useRef(null)
@@ -49,14 +64,14 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
     clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       try {
-        await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor })
+        await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor, remindAt: editRemindAt })
         setSaveStatus('saved')
       } catch {
         setSaveStatus('error')
       }
     }, 800)
     return () => clearTimeout(saveTimer.current)
-  }, [editTitle, editContent, editColor, editingId])
+  }, [editTitle, editContent, editColor, editRemindAt, editingId])
 
   const handleCreate = useCallback(async () => {
     const note = await window.api.notesCreate({ title: '', content: '', color: '#f5f0a8' })
@@ -65,6 +80,8 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
       setEditTitle('')
       setEditContent('')
       setEditColor('#f5f0a8')
+      setEditRemindAt(null)
+      setEditRemindStr('')
       await reload()
       setTimeout(() => contentRef.current?.focus(), 100)
     }
@@ -73,25 +90,25 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
   const handleBackFromEdit = useCallback(async () => {
     if (editingId) {
       clearTimeout(saveTimer.current)
-      await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor })
+      await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor, remindAt: editRemindAt })
       if (!editTitle.trim() && !editContent.trim()) {
         await window.api.notesDelete(editingId)
       }
     }
     setEditingId(null)
     await reload()
-  }, [editingId, editTitle, editContent, editColor, reload])
+  }, [editingId, editTitle, editContent, editColor, editRemindAt, reload])
 
   const handleDelete = useCallback(async (id) => {
     // 删除前先保存当前编辑的内容
     if (editingId === id) {
       clearTimeout(saveTimer.current)
-      await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor })
+      await window.api.notesUpdate(editingId, { title: editTitle, content: editContent, color: editColor, remindAt: editRemindAt })
       setEditingId(null)
     }
     await window.api.notesDelete(id)
     await reload()
-  }, [editingId, editTitle, editContent, editColor, reload])
+  }, [editingId, editTitle, editContent, editColor, editRemindAt, reload])
 
   const handleTogglePin = useCallback(async (id) => {
     await window.api.notesTogglePin(id)
@@ -173,6 +190,21 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
             onChange={e => setEditContent(e.target.value)}
           />
         </div>
+        <div className="note-reminder-row">
+          <span className="note-reminder-label">提醒</span>
+          <input
+            type="datetime-local"
+            className="note-reminder-input"
+            value={editRemindStr}
+            onChange={e => {
+              setEditRemindStr(e.target.value)
+              setEditRemindAt(e.target.value ? new Date(e.target.value).getTime() : null)
+            }}
+          />
+          {editRemindAt && (
+            <button className="note-reminder-clear" onClick={() => { setEditRemindAt(null); setEditRemindStr('') }}>清除</button>
+          )}
+        </div>
         <div className="note-edit-toolbar">
           <div className="note-color-picker">
             {COLORS.map(c => (
@@ -223,6 +255,10 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
                   setEditTitle(note.title)
                   setEditContent(note.content)
                   setEditColor(note.color)
+              setEditRemindAt(note.remindAt || null)
+              setEditRemindStr(note.remindAt ? toLocalInput(note.remindAt) : '')
+                  setEditRemindAt(note.remindAt || null)
+                  setEditRemindStr(note.remindAt ? toLocalInput(note.remindAt) : '')
                 }}
                 onDelete={() => handleDelete(note.id)}
                 onTogglePin={() => handleTogglePin(note.id)}
@@ -244,6 +280,8 @@ export default function NotesPanel({ embedded, searchQuery, onBack }) {
               setEditTitle(note.title)
               setEditContent(note.content)
               setEditColor(note.color)
+              setEditRemindAt(note.remindAt || null)
+              setEditRemindStr(note.remindAt ? toLocalInput(note.remindAt) : '')
             }}
             onDelete={() => handleDelete(note.id)}
             onTogglePin={() => handleTogglePin(note.id)}
@@ -293,10 +331,9 @@ function NoteCard({ note, onEdit, onDelete, onTogglePin, onCopy }) {
           </button>
         </div>
       </div>
-      <div className="note-card-content">
-        {note.content || '空便签'}
-      </div>
+      <div className="note-card-content markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(note.content || '空便签') }} />
       <div className="note-card-time">
+        {note.remindAt && !note.reminded && <span className="note-reminder-badge">⏰ {formatRemind(note.remindAt)}</span>}
         {formatTime(note.updateTime)}
       </div>
     </div>

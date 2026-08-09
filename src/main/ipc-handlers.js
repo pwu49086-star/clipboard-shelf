@@ -65,7 +65,7 @@ function setup(mainWindow) {
           }
           return { type: f.type, content: f.content, ocrText: f.ocrText, imageBase64 }
         }),
-        notes: notes.map(n => ({ title: n.title, content: n.content, color: n.color, isPinned: n.isPinned }))
+        notes: notes.map(n => ({ title: n.title, content: n.content, color: n.color, isPinned: n.isPinned, remindAt: n.remindAt || null }))
       }
       fs.writeFileSync(savePath, JSON.stringify(exportData, null, 2), 'utf-8')
       return savePath
@@ -118,7 +118,7 @@ function setup(mainWindow) {
       let noteCount = 0
       if (data.notes && Array.isArray(data.notes)) {
         for (const n of data.notes) {
-          db.insertNote({ title: n.title, content: n.content, color: n.color })
+          db.insertNote({ title: n.title, content: n.content, color: n.color, remindAt: n.remindAt || null })
           noteCount++
         }
       }

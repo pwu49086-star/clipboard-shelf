@@ -67,6 +67,8 @@ async function init() {
       updateTime INTEGER NOT NULL
     )
   `)
+  try { db.run('ALTER TABLE notes ADD COLUMN remindAt INTEGER') } catch {}
+  try { db.run('ALTER TABLE notes ADD COLUMN reminded INTEGER DEFAULT 0') } catch {}
 
   saveImmediate()
   registerEventHandlers()
@@ -300,13 +302,13 @@ function insertNote(note) {
   if (!db) return null
   const now = Date.now()
   db.run(
-    'INSERT INTO notes (title, content, color, isPinned, createTime, updateTime) VALUES (?, ?, ?, 0, ?, ?)',
-    [note.title || '', note.content || '', note.color || '#f5f0a8', now, now]
+    'INSERT INTO notes (title, content, color, isPinned, createTime, updateTime, remindAt, reminded) VALUES (?, ?, ?, 0, ?, ?, ?, 0)',
+    [note.title || '', note.content || '', note.color || '#f5f0a8', now, now, note.remindAt || null]
   )
   const result = db.exec('SELECT last_insert_rowid()')
   const id = result[0] ? result[0].values[0][0] : null
   save()
-  return { id, title: note.title, content: note.content, color: note.color, isPinned: 0, createTime: now, updateTime: now }
+  return { id, title: note.title, content: note.content, color: note.color, isPinned: 0, createTime: now, updateTime: now, remindAt: note.remindAt || null, reminded: 0 }
 }
 
 function updateNote(id, changes) {
@@ -317,6 +319,8 @@ function updateNote(id, changes) {
   if (changes.content !== undefined) { sets.push('content = ?'); vals.push(changes.content) }
   if (changes.color !== undefined) { sets.push('color = ?'); vals.push(changes.color) }
   if (changes.isPinned !== undefined) { sets.push('isPinned = ?'); vals.push(changes.isPinned) }
+  if (changes.remindAt !== undefined) { sets.push('remindAt = ?'); vals.push(changes.remindAt) }
+  if (changes.reminded !== undefined) { sets.push('reminded = ?'); vals.push(changes.reminded) }
   sets.push('updateTime = ?')
   vals.push(Date.now())
   vals.push(id)
@@ -337,6 +341,22 @@ function toggleNotePin(id) {
   return true
 }
 
+function getDueReminders(now) {
+  if (!db) return []
+  const stmt = db.prepare('SELECT * FROM notes WHERE remindAt IS NOT NULL AND reminded = 0 AND remindAt <= ?')
+  stmt.bind([now])
+  const rows = []
+  while (stmt.step()) rows.push(stmt.getAsObject())
+  stmt.free()
+  return rows
+}
+
+function markNoteReminded(id) {
+  if (!db) return
+  db.run('UPDATE notes SET reminded = 1 WHERE id = ?', [id])
+  save()
+}
+
 // ====== Close ======
 function close() {
   if (db) {
@@ -350,4 +370,5 @@ module.exports = {
   init, getAll, insert, remove, toggleFavorite, updateContent, updateOcrText,
   clearNonFavorites, cleanOld, close,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin
+  , getDueReminders, markNoteReminded
 }

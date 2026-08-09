@@ -5,7 +5,7 @@
  * main 只做 orchestration，不做 logic
  */
 
-const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, protocol, net } = require('electron')
+const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, protocol, net, Notification } = require('electron')
 const path = require('path')
 const fs = require('fs')
 
@@ -608,6 +608,25 @@ app.whenReady().then(async () => {
   }
 
   eventBus.emit(Events.APP_READY)
+
+  // 便签定时提醒（主进程通知，窗口隐藏也能弹）
+  const reminderTimer = setInterval(() => {
+    try {
+      const due = db.getDueReminders(Date.now())
+      for (const n of due) {
+        if (Notification.isSupported()) {
+          const body = (n.title || '').trim() || (n.content || '').slice(0, 60)
+          const notif = new Notification({ title: 'Clipboard Shelf 便签提醒', body })
+          notif.on('click', () => {
+            if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus() }
+          })
+          notif.show()
+        }
+        db.markNoteReminded(n.id)
+      }
+    } catch {}
+  }, 30000)
+  app.on('will-quit', () => { clearInterval(reminderTimer) })
 })
 
 app.on('window-all-closed', (e) => e.preventDefault())
