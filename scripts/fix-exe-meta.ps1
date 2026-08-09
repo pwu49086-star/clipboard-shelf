@@ -1,6 +1,8 @@
 $ErrorActionPreference = 'Stop'
 
-# Use rcedit from the electron-builder cache to write correct version metadata + icon
+# Use rcedit from the electron-builder cache to write correct version metadata + icon.
+# NOTE: only touch the win-unpacked app exe. rcedit corrupts NSIS-built
+# portable/setup executables (they already carry correct metadata from electron-builder).
 $cacheRoot = Join-Path $env:LOCALAPPDATA 'electron-builder\Cache\winCodeSign'
 $rcedit = Get-ChildItem -LiteralPath $cacheRoot -Recurse -Filter 'rcedit-x64.exe' -Force -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $rcedit) {
@@ -11,13 +13,10 @@ if (-not $rcedit) {
 $root = Split-Path -Parent $PSScriptRoot
 $icon = Join-Path $root 'resources\icon.ico'
 $version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
-$targets = @(
-  (Join-Path $root 'release\win-unpacked\Clipboard Shelf.exe'),
-  (Join-Path $root 'release\Clipboard Shelf 1.0.0.exe')
-)
+$targets = @((Join-Path $root 'release\win-unpacked\Clipboard Shelf.exe'))
 
 foreach ($t in $targets) {
-  if (Test-Path -LiteralPath $t) {
+  if (Test-Path -LiteralPath $t -and (Get-Item -LiteralPath $t).Length -gt 1MB) {
     & $rcedit.FullName $t `
       --set-version-string 'ProductName' 'Clipboard Shelf' `
       --set-version-string 'FileDescription' 'Clipboard Shelf' `
