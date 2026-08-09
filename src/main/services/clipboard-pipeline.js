@@ -257,5 +257,6 @@ module.exports = {
   setImageDir,
   skipNextCopy,
   getStatus,
-  loadFromDB
+  loadFromDB,
+  _test: { normalizeText, hashText }
 }

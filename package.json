@@ -1,6 +1,7 @@
 {
   "name": "clipboard-shelf",
   "version": "1.0.0",
+  "productName": "Clipboard Shelf",
   "author": "Clipboard Shelf",
   "description": "Clipboard history tool for Windows",
   "main": "./out/main/index.js",
@@ -8,9 +9,12 @@
     "dev": "node dev.mjs",
     "build": "node build.mjs",
     "build:win": "node build.mjs && electron-builder --win",
+    "fix-meta": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fix-exe-meta.ps1",
+    "build:win:local": "npm run build:win && npm run fix-meta",
     "test": "node --test"
   },
   "dependencies": {
+    "electron-updater": "^6.8.9",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {

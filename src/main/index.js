@@ -9,6 +9,42 @@ const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, protocol, n
 const path = require('path')
 const fs = require('fs')
 
+// ====== 自动更新（仅打包版生效） ======
+let autoUpdater = null
+try {
+  autoUpdater = require('electron-updater').autoUpdater
+} catch {}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged || !autoUpdater) return
+  autoUpdater.autoDownload = false
+  autoUpdater.on('update-available', (info) => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: '发现新版本',
+      message: `Clipboard Shelf 有新版 ${info.version}，是否下载？`,
+      buttons: ['下载', '稍后'],
+      defaultId: 0,
+      cancelId: 1
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.downloadUpdate()
+    }).catch(() => {})
+  })
+  autoUpdater.on('update-downloaded', () => {
+    dialog.showMessageBox({
+      type: 'info',
+      title: '更新已就绪',
+      message: '新版本已下载，是否重启安装？',
+      buttons: ['重启安装', '稍后'],
+      defaultId: 0,
+      cancelId: 1
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall()
+    }).catch(() => {})
+  })
+  autoUpdater.checkForUpdates().catch(() => {})
+}
+
 // ====== Services (loaded before crash handler to avoid TDZ) ======
 const db = require('./services/db-service')
 const clipboardPipeline = require('./services/clipboard-pipeline')
@@ -678,6 +714,8 @@ app.whenReady().then(async () => {
   }
 
   eventBus.emit(Events.APP_READY)
+
+  setupAutoUpdater()
 
   // 便签定时提醒（主进程通知，窗口隐藏也能弹）
   const reminderTimer = setInterval(() => {

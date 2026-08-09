@@ -1,4 +1,4 @@
-﻿appId: com.clipboard-shelf.app
+appId: com.clipboard-shelf.app
 productName: Clipboard Shelf
 icon: resources/icon.ico
 directories:
@@ -28,6 +28,11 @@ win:
       arch:
         - x64
   signAndEditExecutable: false
+
+publish:
+  provider: github
+  owner: pwu49086-star
+  repo: clipboard-shelf
 
 nsis:
   oneClick: false

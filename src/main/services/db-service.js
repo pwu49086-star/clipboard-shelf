@@ -21,11 +21,12 @@ const SAVE_DEBOUNCE = 1000 // 1s 防抖（从 500ms 增加）
 function backupDatabase() {
   try {
     if (!dbPath || !fs.existsSync(dbPath)) return
-    const backupDir = path.join(app.getPath('userData'), 'backups')
+    const userData = process.env.CLIPBOARD_SHELF_USER_DATA || app.getPath('userData')
+    const backupDir = path.join(userData, 'backups')
     fs.mkdirSync(backupDir, { recursive: true })
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     fs.copyFileSync(dbPath, path.join(backupDir, `shelf-${ts}.db`))
-    const cfgSrc = path.join(app.getPath('userData'), 'config.json')
+    const cfgSrc = path.join(userData, 'config.json')
     if (fs.existsSync(cfgSrc)) {
       fs.copyFileSync(cfgSrc, path.join(backupDir, `config-${ts}.json`))
     }
@@ -43,7 +44,7 @@ function backupDatabase() {
 
 async function init() {
   const SQL = await initSqlJs()
-  const userData = app.getPath('userData')
+  const userData = process.env.CLIPBOARD_SHELF_USER_DATA || app.getPath('userData')
   fs.mkdirSync(userData, { recursive: true })
   dbPath = path.join(userData, 'shelf.db')
 

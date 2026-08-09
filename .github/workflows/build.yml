@@ -3,6 +3,7 @@ name: Build Clipboard Shelf
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -28,8 +29,15 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm run build:win
-      - uses: actions/upload-artifact@v4
+      - run: npm run build
+      - name: Publish release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload artifacts (non-tag)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
         with:
           name: Clipboard-Shelf-Windows
           path: |
