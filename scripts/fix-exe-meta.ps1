@@ -16,7 +16,7 @@ $version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json
 $targets = @((Join-Path $root 'release\win-unpacked\Clipboard Shelf.exe'))
 
 foreach ($t in $targets) {
-  if (Test-Path -LiteralPath $t -and (Get-Item -LiteralPath $t).Length -gt 1MB) {
+  if ((Test-Path -LiteralPath $t) -and ((Get-Item -LiteralPath $t).Length -gt 1MB)) {
     & $rcedit.FullName $t `
       --set-version-string 'ProductName' 'Clipboard Shelf' `
       --set-version-string 'FileDescription' 'Clipboard Shelf' `

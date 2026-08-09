@@ -11,6 +11,7 @@ const Database = require('better-sqlite3')
 const path = require('path')
 const fs = require('fs')
 const { eventBus, Events } = require('../core/event-bus')
+const encryption = require('./encryption-service')
 
 let electronApp = null
 try { electronApp = require('electron').app } catch {}
@@ -140,7 +141,7 @@ async function init() {
     db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(content, ocrText, tokenize='trigram')`)
     const ftsCount = db.prepare('SELECT COUNT(*) AS c FROM items_fts').get().c
     const itemCount = db.prepare('SELECT COUNT(*) AS c FROM items').get().c
-    if (ftsCount === 0 && itemCount > 0) {
+    if (ftsCount === 0 && itemCount > 0 && !encryption.isEnabled()) {
       db.exec('INSERT INTO items_fts(rowid, content, ocrText) SELECT id, content, ocrText FROM items')
     }
   } catch (err) {
@@ -192,23 +193,30 @@ function registerEventHandlers() {
 // ====== Items CRUD ======
 function insert(item) {
   if (!db) return null
+  const encContent = encryption.isEnabled() ? encryption.encrypt(item.content || '') : item.content
+  const encOcr = encryption.isEnabled() ? encryption.encrypt(item.ocrText || '') : item.ocrText
   const info = db.prepare(`
     INSERT INTO items (type, content, filePath, thumbPath, ocrText, isFavorite, createTime, fileSize, imageWidth, imageHeight)
     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
   `).run(
     item.type,
-    item.content,
+    encContent,
     item.filePath || null,
     item.thumbPath || null,
-    item.ocrText || null,
+    encOcr,
     item.createTime || Date.now(),
     item.fileSize || null,
     item.imageWidth || null,
     item.imageHeight || null
   )
   const id = Number(info.lastInsertRowid)
-  syncFtsInsert(id, item.content || '', item.ocrText || '')
+  if (!encryption.isEnabled()) syncFtsInsert(id, item.content || '', item.ocrText || '')
   return { ...item, id, isFavorite: 0 }
+}
+
+function decryptRow(r) {
+  if (!r) return r
+  return { ...r, content: encryption.decrypt(r.content), ocrText: encryption.decrypt(r.ocrText) }
 }
 
 function remove(id) {
@@ -222,6 +230,19 @@ function remove(id) {
 function getAll({ search = '', limit = 200, type = null, favorite = null } = {}) {
   if (!db) return []
   const trimmed = String(search).trim()
+
+  if (encryption.isEnabled()) {
+    const rows = db.prepare('SELECT * FROM items ORDER BY isFavorite DESC, createTime DESC LIMIT ?').all(Math.max(limit, 10000))
+    const decrypted = rows.map(decryptRow)
+    if (trimmed) {
+      const q = trimmed.toLowerCase()
+      return decrypted.filter(i =>
+        (i.content || '').toLowerCase().includes(q) ||
+        (i.ocrText || '').toLowerCase().includes(q)
+      ).slice(0, limit)
+    }
+    return decrypted
+  }
 
   const extra = []
   const extraParams = []
@@ -242,7 +263,7 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
           ORDER BY i.isFavorite DESC, i.createTime DESC
           LIMIT ?
         `).all(matchQuery, ...extraParams, limit)
-        return rows
+        return rows.map(decryptRow)
       } catch (e) {
         console.warn('[DBService] FTS search failed, fallback LIKE:', e.message)
       }
@@ -256,7 +277,7 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
       ${extraSqlNoAlias}
       ORDER BY isFavorite DESC, createTime DESC
       LIMIT ?
-    `).all(q, q, ...extraParams, limit)
+    `).all(q, q, ...extraParams, limit).map(decryptRow)
   }
 
   let sql = 'SELECT * FROM items'
@@ -265,7 +286,7 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
     sql += ' WHERE ' + where
   }
   sql += ' ORDER BY isFavorite DESC, createTime DESC LIMIT ?'
-  return db.prepare(sql).all(...extraParams, limit)
+  return db.prepare(sql).all(...extraParams, limit).map(decryptRow)
 }
 
 function toggleFavorite(id) {
@@ -276,14 +297,16 @@ function toggleFavorite(id) {
 
 function updateContent(id, content) {
   if (!db) return
-  db.prepare('UPDATE items SET content = ? WHERE id = ?').run(content, id)
-  syncFtsUpdate(id, content, getItemOcrText(id))
+  const encContent = encryption.isEnabled() ? encryption.encrypt(content) : content
+  db.prepare('UPDATE items SET content = ? WHERE id = ?').run(encContent, id)
+  if (!encryption.isEnabled()) syncFtsUpdate(id, content, getItemOcrText(id))
 }
 
 function updateOcrText(id, ocrText) {
   if (!db) return
-  db.prepare('UPDATE items SET ocrText = ? WHERE id = ?').run(ocrText, id)
-  syncFtsUpdate(id, getItemContent(id), ocrText)
+  const encOcr = encryption.isEnabled() ? encryption.encrypt(ocrText || '') : ocrText
+  db.prepare('UPDATE items SET ocrText = ? WHERE id = ?').run(encOcr, id)
+  if (!encryption.isEnabled()) syncFtsUpdate(id, getItemContent(id), ocrText)
 }
 
 function clearNonFavorites() {
@@ -327,16 +350,22 @@ function cleanOld(maxItems = 2000) {
 // ====== Notes CRUD ======
 function getAllNotes() {
   if (!db) return []
-  return db.prepare('SELECT * FROM notes ORDER BY isPinned DESC, updateTime DESC').all()
+  return db.prepare('SELECT * FROM notes ORDER BY isPinned DESC, updateTime DESC').all().map(n => ({
+    ...n,
+    title: encryption.decrypt(n.title),
+    content: encryption.decrypt(n.content)
+  }))
 }
 
 function insertNote(note) {
   if (!db) return null
   const now = Date.now()
+  const encTitle = encryption.isEnabled() ? encryption.encrypt(note.title || '') : note.title || ''
+  const encContent = encryption.isEnabled() ? encryption.encrypt(note.content || '') : note.content || ''
   const info = db.prepare(`
     INSERT INTO notes (title, content, color, isPinned, createTime, updateTime, remindAt, reminded)
     VALUES (?, ?, ?, 0, ?, ?, ?, 0)
-  `).run(note.title || '', note.content || '', note.color || '#f5f0a8', now, now, note.remindAt || null)
+  `).run(encTitle, encContent, note.color || '#f5f0a8', now, now, note.remindAt || null)
   return {
     id: Number(info.lastInsertRowid),
     title: note.title || '',
@@ -354,8 +383,8 @@ function updateNote(id, changes) {
   if (!db || !changes) return
   const sets = []
   const vals = []
-  if (changes.title !== undefined) { sets.push('title = ?'); vals.push(changes.title) }
-  if (changes.content !== undefined) { sets.push('content = ?'); vals.push(changes.content) }
+  if (changes.title !== undefined) { sets.push('title = ?'); vals.push(encryption.isEnabled() ? encryption.encrypt(changes.title) : changes.title) }
+  if (changes.content !== undefined) { sets.push('content = ?'); vals.push(encryption.isEnabled() ? encryption.encrypt(changes.content) : changes.content) }
   if (changes.color !== undefined) { sets.push('color = ?'); vals.push(changes.color) }
   if (changes.isPinned !== undefined) { sets.push('isPinned = ?'); vals.push(changes.isPinned) }
   if (changes.remindAt !== undefined) { sets.push('remindAt = ?'); vals.push(changes.remindAt) }
@@ -379,7 +408,11 @@ function toggleNotePin(id) {
 
 function getDueReminders(now) {
   if (!db) return []
-  return db.prepare('SELECT * FROM notes WHERE remindAt IS NOT NULL AND reminded = 0 AND remindAt <= ?').all(now)
+  return db.prepare('SELECT * FROM notes WHERE remindAt IS NOT NULL AND reminded = 0 AND remindAt <= ?').all(now).map(n => ({
+    ...n,
+    title: encryption.decrypt(n.title),
+    content: encryption.decrypt(n.content)
+  }))
 }
 
 function markNoteReminded(id) {
@@ -395,9 +428,50 @@ function close() {
   }
 }
 
+// ====== 加密迁移 ======
+function clearFts() {
+  if (!db) return
+  try { db.prepare('DELETE FROM items_fts').run() } catch {}
+}
+
+function reEncryptAll() {
+  if (!db || !encryption.isUnlocked()) return
+  const rows = db.prepare('SELECT id, content, ocrText FROM items').all()
+  const upd = db.prepare('UPDATE items SET content = ?, ocrText = ? WHERE id = ?')
+  for (const r of rows) {
+    upd.run(encryption.encrypt(r.content), encryption.encrypt(r.ocrText), r.id)
+  }
+  const notes = db.prepare('SELECT id, title, content FROM notes').all()
+  const updNote = db.prepare('UPDATE notes SET title = ?, content = ? WHERE id = ?')
+  for (const n of notes) {
+    updNote.run(encryption.encrypt(n.title), encryption.encrypt(n.content), n.id)
+  }
+  clearFts()
+}
+
+function decryptAllAndRebuildFts() {
+  if (!db) return
+  const rows = db.prepare('SELECT id, content, ocrText FROM items').all()
+  const upd = db.prepare('UPDATE items SET content = ?, ocrText = ? WHERE id = ?')
+  for (const r of rows) {
+    upd.run(encryption.decrypt(r.content), encryption.decrypt(r.ocrText), r.id)
+  }
+  const notes = db.prepare('SELECT id, title, content FROM notes').all()
+  const updNote = db.prepare('UPDATE notes SET title = ?, content = ? WHERE id = ?')
+  for (const n of notes) {
+    updNote.run(encryption.decrypt(n.title), encryption.decrypt(n.content), n.id)
+  }
+  clearFts()
+  const itemCount = db.prepare('SELECT COUNT(*) AS c FROM items').get().c
+  if (itemCount > 0) {
+    try { db.exec('INSERT INTO items_fts(rowid, content, ocrText) SELECT id, content, ocrText FROM items') } catch {}
+  }
+}
+
 module.exports = {
   init, getAll, insert, remove, toggleFavorite, updateContent, updateOcrText,
   clearNonFavorites, cleanOld, close, save, saveImmediate,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin,
-  getDueReminders, markNoteReminded
+  getDueReminders, markNoteReminded,
+  clearFts, reEncryptAll, decryptAllAndRebuildFts
 }

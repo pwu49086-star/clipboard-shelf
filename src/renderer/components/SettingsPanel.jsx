@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { BarChart3 } from 'lucide-react'
+import { BarChart3, Lock } from 'lucide-react'
 
 export default function SettingsPanel({ onBack }) {
   const [autoStart, setAutoStart] = useState(false)
@@ -27,10 +27,18 @@ export default function SettingsPanel({ onBack }) {
     try { return localStorage.getItem('cs-theme') || 'light' } catch { return 'light' }
   })
   const [stats, setStats] = useState(null)
+  const [enc, setEnc] = useState(null)
+  const [capOpts, setCapOpts] = useState({ pause: false, skipSensitive: true })
+  const [secMsg, setSecMsg] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [newPw2, setNewPw2] = useState('')
+  const [oldPw, setOldPw] = useState('')
 
   useEffect(() => {
     if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
     if (window.api?.statsOverview) window.api.statsOverview().then(setStats).catch(() => {})
+    if (window.api?.encryptionGetStatus) window.api.encryptionGetStatus().then(setEnc).catch(() => {})
+    if (window.api?.getCaptureOptions) window.api.getCaptureOptions().then(setCapOpts).catch(() => {})
   }, [])
 
   const startCapture = (key) => { setCaptureKey(key); setHotkeyMsg('请按下新快捷键…') }
@@ -39,6 +47,35 @@ export default function SettingsPanel({ onBack }) {
     setTheme(v)
     document.documentElement.dataset.theme = v
     try { localStorage.setItem('cs-theme', v) } catch {}
+  }
+
+  const refreshEnc = async () => {
+    if (window.api?.encryptionGetStatus) setEnc(await window.api.encryptionGetStatus())
+  }
+
+  const doEnable = async () => {
+    if (newPw.length < 4) { setSecMsg('密码至少 4 位'); return }
+    if (newPw !== newPw2) { setSecMsg('两次输入的密码不一致'); return }
+    const r = await window.api.encryptionEnable(newPw)
+    if (r && r.ok) { setSecMsg('已启用加密，历史数据已加密'); setNewPw(''); setNewPw2(''); await refreshEnc() }
+    else setSecMsg((r && r.error) || '启用失败')
+  }
+
+  const doDisable = async () => {
+    const r = await window.api.encryptionDisable(oldPw)
+    if (r && r.ok) { setSecMsg('已关闭加密，数据已解密'); setOldPw(''); await refreshEnc() }
+    else setSecMsg((r && r.error) || '关闭失败')
+  }
+
+  const doLock = async () => {
+    await window.api.encryptionLock()
+    await refreshEnc()
+  }
+
+  const setCap = async (k, v) => {
+    const n = { ...capOpts, [k]: v }
+    setCapOpts(n)
+    await window.api.setCaptureOptions(n)
   }
 
   useEffect(() => {
@@ -134,6 +171,56 @@ export default function SettingsPanel({ onBack }) {
             </div>
             <label className="switch">
               <input type="checkbox" checked={theme === 'dark'} onChange={e => handleTheme(e.target.checked ? 'dark' : 'light')} />
+              <span className="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name"><Lock size={14} style={{marginRight:6}} />主密码加密</span>
+              <span className="setting-desc">
+                {enc ? (enc.enabled ? (enc.unlocked ? '已加密 · 已解锁' : '已加密 · 已锁定') : '未启用') : '加载中…'}
+              </span>
+            </div>
+          </div>
+          {enc && !enc.enabled && (
+            <div className="security-fields">
+              <input className="setting-input" type="password" placeholder="新密码（至少 4 位）" value={newPw} onChange={e => setNewPw(e.target.value)} />
+              <input className="setting-input" type="password" placeholder="确认密码" value={newPw2} onChange={e => setNewPw2(e.target.value)} />
+              <button className="setting-btn" onClick={doEnable}>启用加密</button>
+            </div>
+          )}
+          {enc && enc.enabled && enc.unlocked && (
+            <div className="security-fields">
+              <button className="setting-btn" onClick={doLock}>立即锁定</button>
+              <input className="setting-input" type="password" placeholder="当前密码（关闭加密用）" value={oldPw} onChange={e => setOldPw(e.target.value)} />
+              <button className="setting-btn danger" onClick={doDisable}>关闭加密</button>
+            </div>
+          )}
+          {secMsg && <div className="setting-hint">{secMsg}</div>}
+          <div className="setting-hint">密码只保存在你脑中，忘记后数据无法恢复。</div>
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">暂停剪贴板监听</span>
+              <span className="setting-desc">暂停期间复制的内容不会被记录</span>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={capOpts.pause} onChange={e => setCap('pause', e.target.checked)} />
+              <span className="slider"></span>
+            </label>
+          </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">敏感内容保护</span>
+              <span className="setting-desc">密钥、API Token、银行卡号等不自动记录</span>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={capOpts.skipSensitive} onChange={e => setCap('skipSensitive', e.target.checked)} />
               <span className="slider"></span>
             </label>
           </div>

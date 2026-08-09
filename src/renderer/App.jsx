@@ -31,6 +31,9 @@ export default function App() {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('cs-theme') || 'light' } catch { return 'light' }
   })
+  const [encStatus, setEncStatus] = useState({ enabled: false, unlocked: true })
+  const [lockPw, setLockPw] = useState('')
+  const [lockMsg, setLockMsg] = useState('')
   const toastTimer = useRef(null)
   const searchRef = useRef(null)
   const debounceRef = useRef(null)
@@ -45,6 +48,13 @@ export default function App() {
   const handleDeleteRef = useRef(null)
 
   useEffect(() => { if (pinned) window.api.setAlwaysOnTop(true) }, [])
+
+  // 加密状态
+  useEffect(() => {
+    if (window.api?.encryptionGetStatus) {
+      window.api.encryptionGetStatus().then(setEncStatus).catch(() => {})
+    }
+  }, [])
 
   // 命令面板（全局快捷键触发）
   useEffect(() => {
@@ -84,7 +94,10 @@ export default function App() {
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { loadItems() }, [loadItems])
+  useEffect(() => {
+    if (encStatus.enabled && !encStatus.unlocked) return
+    loadItems()
+  }, [encStatus, loadItems])
 
   useEffect(() => {
     const load = async () => {
@@ -98,10 +111,10 @@ export default function App() {
   useEffect(() => {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      if (filter !== 'notes') loadItems(search, filter)
+      if (filter !== 'notes' && !(encStatus.enabled && !encStatus.unlocked)) loadItems(search, filter)
     }, 250)
     return () => clearTimeout(debounceRef.current)
-  }, [search, loadItems, filter])
+  }, [search, loadItems, filter, encStatus])
 
   useEffect(() => {
     const offUpdate = window.api.onUpdate((item) => {
@@ -226,6 +239,22 @@ export default function App() {
     try { await window.api.screenshot() } catch {}
     finally { setShooting(false) }
   }, [])
+
+  const doUnlock = useCallback(async () => {
+    try {
+      const r = await window.api.encryptionUnlock(lockPw)
+      if (r && r.ok) {
+        setEncStatus({ enabled: true, unlocked: true })
+        setLockPw('')
+        setLockMsg('')
+        loadItems(searchRef2.current, filterRef2.current)
+      } else {
+        setLockMsg((r && r.error) || '解锁失败')
+      }
+    } catch (e) {
+      setLockMsg('解锁失败')
+    }
+  }, [lockPw, loadItems])
 
   // 托盘命令
   useEffect(() => {
@@ -396,6 +425,27 @@ export default function App() {
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       {toast && <div className="toast">{toast}</div>}
+
+      {encStatus.enabled && !encStatus.unlocked && (
+        <div className="lock-overlay">
+          <div className="lock-card">
+            <div className="lock-title">🔒 剪贴板已锁定</div>
+            <div className="lock-desc">输入主密码解锁历史记录</div>
+            <input
+              type="password"
+              className="lock-input"
+              value={lockPw}
+              onChange={e => setLockPw(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') doUnlock() }}
+              autoFocus
+              placeholder="主密码"
+            />
+            {lockMsg && <div className="lock-msg">{lockMsg}</div>}
+            <button className="lock-btn" onClick={doUnlock}>解锁</button>
+            <div className="lock-hint">忘记密码将无法恢复数据</div>
+          </div>
+        </div>
+      )}
 
       {previewItem && (
         <div className="preview-overlay" onClick={closePreview}>

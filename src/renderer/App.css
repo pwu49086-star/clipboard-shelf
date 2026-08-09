@@ -958,6 +958,57 @@ mark.hl {
 .hotkey-box:hover { background: var(--color-surface-active) }
 .setting-hint { padding: 4px 0 8px; font-size: 12px; color: var(--color-text-muted) }
 
+/* ====== Lock screen + security ====== */
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  background: var(--color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lock-card {
+  width: min(340px, 88vw);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.lock-title { font-size: 17px; font-weight: 600; text-align: center }
+.lock-desc { font-size: 13px; color: var(--color-text-secondary); text-align: center }
+.lock-input {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  font-size: 14px;
+}
+.lock-btn {
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+.lock-btn:hover { background: var(--color-primary-hover) }
+.lock-msg { font-size: 12px; color: var(--color-danger); text-align: center }
+.lock-hint { font-size: 11px; color: var(--color-text-muted); text-align: center }
+.security-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 0;
+}
+.setting-btn.danger { color: var(--color-danger) }
+
 /* ====== Note reminders + Markdown ====== */
 .note-reminder-row {
   display: flex;

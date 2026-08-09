@@ -11,6 +11,28 @@ const path = require('path')
 const fs = require('fs')
 const { eventBus, Events } = require('../core/event-bus')
 
+// ====== Options（暂停监听 / 敏感内容保护） ======
+let options = { pause: false, skipSensitive: true }
+
+function setOptions(opts) {
+  if (!opts) return
+  if (typeof opts.pause === 'boolean') options.pause = opts.pause
+  if (typeof opts.skipSensitive === 'boolean') options.skipSensitive = opts.skipSensitive
+}
+
+function isSensitive(text) {
+  const patterns = [
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+    /\bsk-[A-Za-z0-9]{20,}\b/,
+    /github_pat_[A-Za-z0-9_]{20,}/,
+    /\bAKIA[0-9A-Z]{16}\b/,
+    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
+    /(mongodb|postgres|mysql):\/\/[^\s:@]+:[^\s:@]+@/,
+    /\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[ -]?(?:[0-9]{4}[ -]?){3}\b/
+  ]
+  return patterns.some(p => p.test(text))
+}
+
 // ====== Config ======
 const POLL_INTERVAL = 1000 // 1s
 const QUEUE_MAX = 50
@@ -139,6 +161,7 @@ function saveImage(img, cachedPngBuffer) {
 function checkClipboard() {
   try {
     const { clipboard } = require('electron')
+    if (options.pause) return
     if (skipCount > 0) {
       skipCount--
       return
@@ -170,6 +193,7 @@ function checkClipboard() {
     const text = clipboard.readText()
     const normalized = normalizeText(text)
     if (normalized) {
+      if (options.skipSensitive && isSensitive(normalized)) return
       const hash = hashText(normalized)
       if (seenTextHashes.has(hash)) return
       seenTextHashes.add(hash)
@@ -259,4 +283,6 @@ module.exports = {
   getStatus,
   loadFromDB,
   _test: { normalizeText, hashText }
+  ,
+  setOptions
 }

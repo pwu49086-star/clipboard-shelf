@@ -63,6 +63,15 @@ contextBridge.exposeInMainWorld('api', {
   tasksBump: (key) => ipcRenderer.invoke('tasks:bump', key),
   tasksSelectSkin: (skin) => ipcRenderer.invoke('tasks:selectSkin', skin),
 
+  // 主密码加密
+  encryptionGetStatus: () => ipcRenderer.invoke('encryption:getStatus'),
+  encryptionEnable: (pw) => ipcRenderer.invoke('encryption:enable', pw),
+  encryptionUnlock: (pw) => ipcRenderer.invoke('encryption:unlock', pw),
+  encryptionDisable: (pw) => ipcRenderer.invoke('encryption:disable', pw),
+  encryptionLock: () => ipcRenderer.invoke('encryption:lock'),
+  getCaptureOptions: () => ipcRenderer.invoke('settings:getCaptureOptions'),
+  setCaptureOptions: (opts) => ipcRenderer.invoke('settings:setCaptureOptions', opts),
+
   // 数据统计
   statsOverview: () => ipcRenderer.invoke('stats:overview'),
 

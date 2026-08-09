@@ -52,6 +52,7 @@ function setupAutoUpdater() {
 const db = require('./services/db-service')
 const clipboardPipeline = require('./services/clipboard-pipeline')
 const ocrService = require('./services/ocr-service')
+const encryptionService = require('./services/encryption-service')
 const petEngine = require('./pet/pet-engine')
 const petTasks = require('./pet-tasks')
 
@@ -601,6 +602,36 @@ function setupIPC() {
     if (petWindow && !petWindow.isDestroyed()) petWindow.webContents.send('pet:setSkin', skin)
     return { ok: true }
   })
+
+  // 主密码加密
+  ipcMain.handle('encryption:getStatus', () => encryptionService.getStatus())
+  ipcMain.handle('encryption:enable', (e, pw) => {
+    const r = encryptionService.enable(pw)
+    if (r.ok) db.reEncryptAll()
+    return r
+  })
+  ipcMain.handle('encryption:unlock', (e, pw) => encryptionService.unlock(pw))
+  ipcMain.handle('encryption:disable', (e, pw) => {
+    const r = encryptionService.disable(pw)
+    if (r.ok) {
+      db.decryptAllAndRebuildFts()
+      encryptionService.lock()
+    }
+    return r
+  })
+  ipcMain.handle('encryption:lock', () => encryptionService.lock())
+
+  // 监听选项（暂停 / 敏感内容保护）
+  ipcMain.handle('settings:getCaptureOptions', () => ({
+    pause: !!config.pauseCapture,
+    skipSensitive: config.skipSensitive !== false
+  }))
+  ipcMain.handle('settings:setCaptureOptions', (e, opts) => {
+    if (opts && typeof opts.pause === 'boolean') { config.pauseCapture = opts.pause; saveConfig() }
+    if (opts && typeof opts.skipSensitive === 'boolean') { config.skipSensitive = opts.skipSensitive; saveConfig() }
+    clipboardPipeline.setOptions({ pause: !!config.pauseCapture, skipSensitive: config.skipSensitive !== false })
+    return { ok: true }
+  })
 }
 
 // ====== Event Bus Wiring ======
@@ -671,6 +702,7 @@ app.whenReady().then(async () => {
   })
   // 初始化服务
   await db.init()
+  encryptionService.init()
   ocrService.init()
   petEngine.init()
   petTasks.init()
@@ -687,6 +719,7 @@ app.whenReady().then(async () => {
   const imagesDir = path.join(app.getPath('userData'), 'images')
   imagesDirGlobal = imagesDir
   clipboardPipeline.setImageDir(imagesDir)
+  clipboardPipeline.setOptions({ pause: !!config.pauseCapture, skipSensitive: config.skipSensitive !== false })
 
   // 设置 IPC
   setupIPC()
