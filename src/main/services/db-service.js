@@ -10,15 +10,21 @@
 const Database = require('better-sqlite3')
 const path = require('path')
 const fs = require('fs')
-const { app } = require('electron')
 const { eventBus, Events } = require('../core/event-bus')
+
+let electronApp = null
+try { electronApp = require('electron').app } catch {}
 
 // ====== State ======
 let db = null
 let dbPath = null
 
 function userDataDir() {
-  return process.env.CLIPBOARD_SHELF_USER_DATA || app.getPath('userData')
+  if (process.env.CLIPBOARD_SHELF_USER_DATA) return process.env.CLIPBOARD_SHELF_USER_DATA
+  try {
+    if (electronApp) return electronApp.getPath('userData')
+  } catch {}
+  return path.join(require('os').tmpdir(), 'clipboard-shelf')
 }
 
 // ====== Backup ======

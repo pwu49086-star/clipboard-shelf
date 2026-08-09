@@ -6,7 +6,6 @@
  * 解耦: 通过 EventBus 发出事件，不直接调用 DB/OCR/UI
  */
 
-const { clipboard, nativeImage } = require('electron')
 const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
@@ -139,6 +138,7 @@ function saveImage(img, cachedPngBuffer) {
 // ====== Poll ======
 function checkClipboard() {
   try {
+    const { clipboard } = require('electron')
     if (skipCount > 0) {
       skipCount--
       return

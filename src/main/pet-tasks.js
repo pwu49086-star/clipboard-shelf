@@ -4,8 +4,10 @@
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
-const { app } = require('electron')
 const { eventBus, Events } = require('./core/event-bus')
+
+let electronApp = null
+try { electronApp = require('electron').app } catch {}
 
 const TASKS = [
   { key: 'copy5', name: '复制小达人', desc: '今日复制 5 次', countKey: 'copy', need: 5, skin: 'snow' },
@@ -29,10 +31,11 @@ let state = null
 function filePath() {
   if (process.env.PET_TASKS_FILE) return process.env.PET_TASKS_FILE
   try {
-    return path.join(app.getPath('userData'), 'pet-tasks.json')
+    if (electronApp) return path.join(electronApp.getPath('userData'), 'pet-tasks.json')
   } catch {
     return path.join(os.tmpdir(), 'pet-tasks.json')
   }
+  return path.join(os.tmpdir(), 'pet-tasks.json')
 }
 
 function today() {
