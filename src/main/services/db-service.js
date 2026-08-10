@@ -25,6 +25,23 @@ const MIGRATIONS = [
       'ALTER TABLE items ADD COLUMN metadataOnly INTEGER DEFAULT 0',
       'CREATE INDEX IF NOT EXISTS idx_items_source ON items(sourceApp)'
     ]
+  },
+  {
+    version: 2,
+    sql: [
+      'ALTER TABLE items ADD COLUMN entityState INTEGER DEFAULT 0',
+      `CREATE TABLE IF NOT EXISTS entities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        value TEXT NOT NULL,
+        confidence INTEGER NOT NULL,
+        match_type TEXT NOT NULL,
+        createTime INTEGER NOT NULL
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_entities_item ON entities(item_id)',
+      'CREATE INDEX IF NOT EXISTS idx_entities_type_value ON entities(type, value)'
+    ]
   }
 ]
 
@@ -149,7 +166,8 @@ async function init() {
       sourceProcess TEXT,
       capturedAt INTEGER,
       sensitivity INTEGER DEFAULT 0,
-      metadataOnly INTEGER DEFAULT 0
+      metadataOnly INTEGER DEFAULT 0,
+      entityState INTEGER DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(isFavorite);
@@ -207,6 +225,15 @@ function registerEventHandlers() {
     if (result) {
       eventBus.emit(Events.DB_INSERT, result)
       eventBus.emit(Events.PET_NOTIFY, result)
+      // 实体识别：仅当内容可安全分析时携带明文，否则只发空任务（异步消费方标记跳过）
+      const canAnalyze = result.sensitivity === 0 &&
+        !result.metadataOnly &&
+        !!result.content &&
+        !(encryption.isEnabled() && !encryption.isUnlocked())
+      eventBus.emit(Events.ENTITY_JOB, {
+        itemId: result.id,
+        content: canAnalyze ? result.content : null
+      })
     }
   })
 
@@ -269,6 +296,7 @@ function remove(id) {
   if (!db) return null
   const item = db.prepare('SELECT filePath, thumbPath FROM items WHERE id = ?').get(id)
   db.prepare('DELETE FROM items WHERE id = ?').run(id)
+  db.prepare('DELETE FROM entities WHERE item_id = ?').run(id)
   syncFtsDelete(id)
   return item || null
 }
@@ -361,6 +389,7 @@ function clearNonFavorites() {
   db.prepare('DELETE FROM items WHERE isFavorite = 0').run()
 
   const ids = rows.map(r => r.id)
+  deleteEntitiesForIds(ids)
   for (const id of ids) syncFtsDelete(id)
   if (ids.length > 0) eventBus.emit(Events.DB_BATCH_DELETE, { ids })
 
@@ -450,9 +479,45 @@ function cleanByPolicy(policy = {}) {
   const ids = rows.map(r => r.id)
   const placeholders = ids.map(() => '?').join(',')
   db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids)
+  deleteEntitiesForIds(ids)
   for (const id of ids) syncFtsDelete(id)
   eventBus.emit(Events.DB_BATCH_DELETE, { ids })
   return rows
+}
+
+// ====== Entities（v1.5.0 本地实体识别持久化） ======
+
+function deleteEntitiesForIds(ids) {
+  if (!db || !Array.isArray(ids) || ids.length === 0) return
+  const placeholders = ids.map(() => '?').join(',')
+  db.prepare(`DELETE FROM entities WHERE item_id IN (${placeholders})`).run(...ids)
+}
+
+function insertEntities(itemId, entities = []) {
+  if (!db || !itemId) return
+  const list = entities.filter(e => e && e.type && e.value)
+  const now = Date.now()
+  const stmt = db.prepare(`
+    INSERT INTO entities (item_id, type, value, confidence, match_type, createTime)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `)
+  const tx = db.transaction((rows) => {
+    for (const e of rows) {
+      stmt.run(itemId, e.type, e.value, e.confidence, e.match_type, now)
+    }
+  })
+  tx(list)
+  markEntityState(itemId, 1)
+}
+
+function markEntityState(id, state) {
+  if (!db || !id) return
+  db.prepare('UPDATE items SET entityState = ? WHERE id = ?').run(state, id)
+}
+
+function getEntitiesByItem(itemId) {
+  if (!db) return []
+  return db.prepare('SELECT * FROM entities WHERE item_id = ? ORDER BY id').all(itemId)
 }
 
 // ====== Notes CRUD ======
@@ -579,6 +644,7 @@ function decryptAllAndRebuildFts() {
 module.exports = {
   init, getAll, insert, remove, toggleFavorite, updateContent, updateOcrText,
   clearNonFavorites, cleanOld, cleanByPolicy, close, save, saveImmediate,
+  insertEntities, markEntityState, getEntitiesByItem, deleteEntitiesForIds,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin,
   getDueReminders, markNoteReminded,
   clearFts, reEncryptAll, decryptAllAndRebuildFts,

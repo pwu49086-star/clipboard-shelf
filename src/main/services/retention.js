@@ -3,7 +3,7 @@
  *
  * 默认策略：
  *   enabled: true
- *   maxItems: 2000      （0 = 不限制）
+ *   maxItems: 5000      （0 = 不限制）
  *   maxDays: 0          （0 = 不启用）
  *   maxImageItems: 0    （0 = 不限制）
  *
@@ -18,7 +18,7 @@ const db = require('./db-service')
 
 const DEFAULT_POLICY = {
   enabled: true,
-  maxItems: 2000,
+  maxItems: 5000,
   maxDays: 0,
   maxImageItems: 0
 }

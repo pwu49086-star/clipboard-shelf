@@ -24,7 +24,7 @@ test.after(() => {
 test('resolvePolicy applies defaults', () => {
   const p = resolvePolicy({})
   assert.strictEqual(p.enabled, true)
-  assert.strictEqual(p.maxItems, 2000)
+  assert.strictEqual(p.maxItems, 5000)
   assert.strictEqual(p.maxDays, 0)
   assert.strictEqual(p.maxImageItems, 0)
 })

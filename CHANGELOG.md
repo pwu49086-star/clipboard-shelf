@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.5.0 (2026-08-10) — Local Entity Recognition
+
+### 新增
+
+- 本地实体识别（零第三方依赖，纯规则引擎）：
+  - 持久化实体：`brand` / `model` / `fault_code` / `refrigerant` / `url`；
+  - 仅内存识别（不落库）：`phone` / `email`；
+  - `work_order` / `equipment_code` 本版本不实现。
+- HVAC 规则：7 大品牌词典（大金/格力/美的/日立/三菱/松下/富士通将军）+ 品牌锚定型号正则 + 故障码上下文约束（A1/B1/01/E 等短串不误报）+ 制冷剂关键词 + URL。
+- 异步识别链路：`Clipboard → Pipeline → DB_INSERT → ENTITY_JOB → Entity Recognition → ENTITY_DONE`，不进入 clipboard pipeline worker，复制主链路零影响。
+- 隐私门禁：`sensitivity=0 && metadataOnly=0 && content 非空` 才分析；加密锁定态不分析；phone/email 不持久化。
+- 数据库 migration v2：新增 `entities` 表 + `items.entityState`；历史数据不自动补扫（只分析新复制内容）。
+- 删除联动：`remove` / `clearNonFavorites` / `cleanByPolicy` 同步清理实体。
+- 性能：实体识别 P95 = 1ms（10KB 长文本截断分析）。
+
+### 变更
+
+- retention 默认 `maxItems`：2000 → 5000（避免既有数据量接近 2000 时启动被自动清理；`enabled=true`、`maxDays=0` 不变）。
+
+### 已知限制
+
+- 实体识别为保守本地规则，不覆盖全部型号/品牌，宁可不识别也不误报；
+- 轮询架构仍存在最多约 1s 的检测窗口（既有限制）；
+- 本版本**不包含** Document Index / Context Matching / Toast 联想 / AI（分别属于 v1.5.1 / v1.5.2 及后续）。
+
+---
+
 ## v1.4.1 (2026-08-10) — Source Accuracy Fix
 
 ### 变更

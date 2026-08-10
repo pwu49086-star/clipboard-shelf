@@ -28,6 +28,8 @@ const Events = {
   DB_FLUSH:          { name: 'db:flush',          tier: Tier.SYSTEM },
   OCR_JOB:           { name: 'ocr:job',           tier: Tier.SYSTEM },
   OCR_DONE:          { name: 'ocr:done',          tier: Tier.SYSTEM },
+  ENTITY_JOB:        { name: 'entity:job',        tier: Tier.SYSTEM },
+  ENTITY_DONE:       { name: 'entity:done',       tier: Tier.SYSTEM },
   SCREENSHOT:        { name: 'screenshot',        tier: Tier.SYSTEM },
   FILE_SAVE:         { name: 'file:save',         tier: Tier.SYSTEM },
   FILE_DELETE:       { name: 'file:delete',       tier: Tier.SYSTEM },
