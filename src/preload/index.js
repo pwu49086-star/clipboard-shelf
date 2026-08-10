@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // 复制到剪贴板
   copyItem: (item) => ipcRenderer.invoke('items:copy', item),
+  copyPlainText: (item) => ipcRenderer.invoke('items:copyPlainText', item),
 
   // 拖拽
   startDrag: (item) => ipcRenderer.invoke('items:startDrag', item),
@@ -71,6 +72,10 @@ contextBridge.exposeInMainWorld('api', {
   encryptionLock: () => ipcRenderer.invoke('encryption:lock'),
   getCaptureOptions: () => ipcRenderer.invoke('settings:getCaptureOptions'),
   setCaptureOptions: (opts) => ipcRenderer.invoke('settings:setCaptureOptions', opts),
+  getRetention: () => ipcRenderer.invoke('settings:getRetention'),
+  setRetention: (policy) => ipcRenderer.invoke('settings:setRetention', policy),
+  getPasteOptions: () => ipcRenderer.invoke('settings:getPasteOptions'),
+  setPasteOptions: (opts) => ipcRenderer.invoke('settings:setPasteOptions', opts),
 
   // 关于 / 更新
   getVersion: () => ipcRenderer.invoke('app:getVersion'),
@@ -93,9 +98,6 @@ contextBridge.exposeInMainWorld('api', {
   // 导入文件
   importImage: (base64, filename) => ipcRenderer.invoke('import:image', base64, filename),
   importText: (text) => ipcRenderer.invoke('import:text', text),
-
-  // 设置最大记录数
-  setMaxItems: (n) => ipcRenderer.invoke('settings:setMaxItems', n),
 
   // Memory 系统
   memorySearch: (query) => ipcRenderer.invoke('memory:search', query),

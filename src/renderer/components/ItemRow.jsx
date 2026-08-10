@@ -53,10 +53,12 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [copyFlash, setCopyFlash] = useState(false)
   const [ctx, setCtx] = useState(null)
+  const [revealed, setRevealed] = useState(false)
   const confirmTimer = useRef(null)
   const editRef = useRef(null)
 
   const isImage = item.type === 'image'
+  const isMasked = item.sensitivity === 1 && !revealed
   const handleRowClick = useCallback((e) => {
     if (isImage && !e?.shiftKey && !e?.ctrlKey) {
       onEdit(item)
@@ -66,6 +68,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   }, [isImage, onEdit, onSelect, item])
   const handleTextClick = useCallback((e) => {
     if (item.type !== 'text') return
+    if (item.metadataOnly) return
     e.stopPropagation()
     const text = item.content || ''
     const lines = text.split('\n').length
@@ -93,6 +96,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   }, [editing])
 
   const handleDragStart = useCallback((e) => {
+    if (item.metadataOnly) return
     if (item.type === 'image') {
       e.preventDefault()
       window.api.startDrag(item)
@@ -104,6 +108,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
 
   const handleCopy = useCallback((e) => {
     e.stopPropagation()
+    if (item.metadataOnly) return
     setCopyFlash(true)
     setTimeout(() => setCopyFlash(false), 250)
     onCopy(item)
@@ -153,7 +158,9 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   
 
   const rawText = isImage ? (item.ocrText || '') : (item.content || '')
-  const displayText = truncateText(rawText, 100)
+  const displayText = item.metadataOnly
+    ? '🔴 高敏感 · 仅保留元数据'
+    : (isMasked ? '🟡 敏感内容已打码' : truncateText(rawText, 100))
 
   // 元信息
   const meta = []
@@ -166,15 +173,23 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
   if (isImage && item.fileSize) {
     meta.push(formatSize(item.fileSize))
   }
+  if (item.sourceApp) {
+    meta.push('来自 ' + item.sourceApp)
+  }
   if (isImage && item.imageWidth && item.imageHeight) {
     meta.push(`${item.imageWidth}×${item.imageHeight}`)
   }
+  if (item.sensitivity === 2) meta.push('🔴 高敏感')
+  else if (item.sensitivity === 1) meta.push('🟡 敏感')
 
   return (
     <div
       className={`item-row ${isSelected ? 'selected' : ''} ${isImage ? 'has-image' : ''} ${copyFlash ? 'item-copy-flash' : ''}`}
       onClick={handleRowClick}
-      onDoubleClick={isImage ? undefined : (e) => { e.stopPropagation(); setCopyFlash(true); setTimeout(() => setCopyFlash(false), 400); onCopy(item) }}
+      onDoubleClick={isImage ? undefined : (e) => {
+        if (item.metadataOnly) return
+        e.stopPropagation(); setCopyFlash(true); setTimeout(() => setCopyFlash(false), 400); onCopy(item)
+      }}
       onContextMenu={openCtx}
       draggable={!multiMode}
       onDragStart={handleDragStart}
@@ -221,6 +236,11 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
           )}
           <div className="item-meta">
             {meta.map((m, i) => <span key={i}>{m}</span>)}
+            {item.sensitivity === 1 && (
+              <button className="item-reveal-btn" onClick={(e) => { e.stopPropagation(); setRevealed(r => !r) }}>
+                {revealed ? '打码' : '显示'}
+              </button>
+            )}
             {isImage && item.ocrText && (
               <span className="item-ocr-badge" title="点击复制识别文字" onClick={(e) => {
                 e.stopPropagation()
@@ -240,7 +260,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
       )}
 
       <div className="item-actions">
-        <button className="item-action-btn" onClick={handleCopy} title="复制">
+        <button className="item-action-btn" onClick={handleCopy} title={item.metadataOnly ? '仅元数据，无内容' : '复制'} disabled={!!item.metadataOnly}>
           <Copy size={13} />
         </button>
         <button
@@ -257,11 +277,11 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
 
       {ctx && (
         <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => { onCopy(item); setCtx(null) }}>复制</button>
+          {!item.metadataOnly && <button onClick={() => { onCopy(item); setCtx(null) }}>复制</button>}
           <button onClick={() => { onToggleFavorite(item.id); setCtx(null) }}>{item.isFavorite ? '取消收藏' : '收藏'}</button>
           {isImage && item.filePath && <button onClick={() => { window.api.pinImage(item.filePath); setCtx(null) }}>钉到桌面</button>}
           {isImage && item.filePath && <button onClick={() => { window.api.showInExplorer(item.filePath); setCtx(null) }}>在文件夹中显示</button>}
-          {!isImage && <button onClick={() => { onEdit(item); setCtx(null) }}>编辑</button>}
+          {!isImage && !item.metadataOnly && <button onClick={() => { onEdit(item); setCtx(null) }}>编辑</button>}
           <button className="ctx-danger" onClick={() => { onDelete(item.id); setCtx(null) }}>删除</button>
         </div>
       )}

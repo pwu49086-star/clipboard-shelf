@@ -201,6 +201,16 @@ function setup(mainWindow) {
     return true
   })
 
+  // 纯文本粘贴（Ctrl+Shift+V）：只写入纯文本，不自动输入
+  ipcMain.handle('items:copyPlainText', (event, item) => {
+    const watcher = require('./services/clipboard-pipeline')
+    watcher.skipNextCopy()
+    if (item && item.type === 'text') {
+      clipboard.writeText(item.content || '')
+    }
+    return true
+  })
+
   // 拖拽文件
   ipcMain.handle('items:startDrag', (event, item) => {
     if (item.type === 'image' && item.filePath) {

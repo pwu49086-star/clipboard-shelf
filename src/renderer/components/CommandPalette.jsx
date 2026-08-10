@@ -97,7 +97,9 @@ export default function CommandPalette({ open, onClose }) {
       id: 'item_' + i.id,
       type: 'item',
       item: i,
-      label: i.content || (i.ocrText || '图片'),
+      label: i.metadataOnly
+        ? '🔴 高敏感 · 仅元数据'
+        : (i.sensitivity === 1 ? '🟡 敏感内容已打码' : (i.content || (i.ocrText || '图片'))),
       hint: i.type === 'image' ? '图片' : '历史'
     })),
     ...notes.map(n => ({
@@ -110,6 +112,10 @@ export default function CommandPalette({ open, onClose }) {
   ].slice(0, 50)
 
   const copyItem = async (item) => {
+    if (item.metadataOnly) {
+      setResult({ title: '无法复制', loading: false, text: '该记录仅保留元数据，没有内容', error: null })
+      return
+    }
     try {
       await window.api.copyItem(item)
       setResult({ title: '已复制', loading: false, text: (item.content || '图片').slice(0, 120), error: null })

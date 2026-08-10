@@ -3,8 +3,11 @@ import { BarChart3, Info, Lock } from 'lucide-react'
 
 export default function SettingsPanel({ onBack }) {
   const [autoStart, setAutoStart] = useState(false)
-  const [maxItems, setMaxItems] = useState(2000)
-  const maxItemsTimer = useRef(null)
+  const [retention, setRetention] = useState({ enabled: true, maxItems: 2000, maxDays: 0, maxImageItems: 0 })
+  const [pasteOpts, setPasteOpts] = useState({ sequential: true })
+  const retentionTimer = useRef(null)
+  const [ignoreAppsText, setIgnoreAppsText] = useState('')
+  const [metadataAppsText, setMetadataAppsText] = useState('')
 
   useEffect(() => {
     try {
@@ -12,7 +15,6 @@ export default function SettingsPanel({ onBack }) {
       if (saved) {
         const s = JSON.parse(saved)
         if (s.autoStart !== undefined) setAutoStart(s.autoStart)
-        if (s.maxItems !== undefined) setMaxItems(s.maxItems)
       }
     } catch {}
     try {
@@ -40,7 +42,13 @@ export default function SettingsPanel({ onBack }) {
     if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
     if (window.api?.statsOverview) window.api.statsOverview().then(setStats).catch(() => {})
     if (window.api?.encryptionGetStatus) window.api.encryptionGetStatus().then(setEnc).catch(() => {})
-    if (window.api?.getCaptureOptions) window.api.getCaptureOptions().then(setCapOpts).catch(() => {})
+    if (window.api?.getCaptureOptions) window.api.getCaptureOptions().then(o => {
+      setCapOpts(o)
+      setIgnoreAppsText((o.ignoreApps || []).join(', '))
+      setMetadataAppsText((o.metadataOnlyApps || []).join(', '))
+    }).catch(() => {})
+    if (window.api?.getRetention) window.api.getRetention().then(r => r && setRetention(r)).catch(() => {})
+    if (window.api?.getPasteOptions) window.api.getPasteOptions().then(r => r && setPasteOpts(r)).catch(() => {})
     if (window.api?.getVersion) window.api.getVersion().then(setVersion).catch(() => {})
   }, [])
 
@@ -79,6 +87,26 @@ export default function SettingsPanel({ onBack }) {
     const n = { ...capOpts, [k]: v }
     setCapOpts(n)
     await window.api.setCaptureOptions(n)
+  }
+
+  const saveAppList = async (key, raw) => {
+    const list = raw.split(/[,，\n]/).map(s => s.trim()).filter(Boolean)
+    await setCap(key, list)
+  }
+
+  const updateRetention = (patch) => {
+    const next = { ...retention, ...patch }
+    setRetention(next)
+    clearTimeout(retentionTimer.current)
+    retentionTimer.current = setTimeout(() => {
+      if (window.api?.setRetention) window.api.setRetention(next)
+    }, 500)
+  }
+
+  const setPasteOption = async (k, v) => {
+    const next = { ...pasteOpts, [k]: v }
+    setPasteOpts(next)
+    await window.api.setPasteOptions(next)
   }
 
   const checkUpdate = async () => {
@@ -124,23 +152,6 @@ export default function SettingsPanel({ onBack }) {
       localStorage.setItem('clipboard-shelf-settings', JSON.stringify(settings))
     } catch {}
     try { window.api?.setAutoStart(v) } catch {}
-  }
-
-  const handleMaxItems = (v) => {
-    const raw = v === '' ? '' : parseInt(v)
-    if (raw === '') { setMaxItems(''); return }
-    const n = Math.min(10000, Math.max(100, raw || 2000))
-    setMaxItems(n)
-    clearTimeout(maxItemsTimer.current)
-    maxItemsTimer.current = setTimeout(() => {
-      try {
-        const saved = localStorage.getItem('clipboard-shelf-settings')
-        const settings = saved ? JSON.parse(saved) : {}
-        settings.maxItems = n
-        localStorage.setItem('clipboard-shelf-settings', JSON.stringify(settings))
-      } catch {}
-      if (window.api?.setMaxItems) window.api.setMaxItems(n)
-    }, 500)
   }
 
   const [exportStatus, setExportStatus] = useState('')
@@ -227,13 +238,41 @@ export default function SettingsPanel({ onBack }) {
           <div className="setting-row">
             <div className="setting-label">
               <span className="setting-name">敏感内容保护</span>
-              <span className="setting-desc">密钥、API Token、银行卡号等不自动记录</span>
+              <span className="setting-desc">🟡 敏感保存但预览打码；🔴 高敏感只存元数据</span>
             </div>
             <label className="switch">
               <input type="checkbox" checked={capOpts.skipSensitive} onChange={e => setCap('skipSensitive', e.target.checked)} />
               <span className="slider"></span>
             </label>
           </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">忽略来源应用</span>
+              <span className="setting-desc">这些应用复制的内容完全不记录（逗号分隔）</span>
+            </div>
+          </div>
+          <input
+            className="setting-input"
+            type="text"
+            placeholder="如：PasswordManager, KeePass"
+            value={ignoreAppsText}
+            onChange={e => setIgnoreAppsText(e.target.value)}
+            onBlur={e => saveAppList('ignoreApps', e.target.value)}
+          />
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">仅保存元数据应用</span>
+              <span className="setting-desc">只记录来源和时间，不保存内容（逗号分隔）</span>
+            </div>
+          </div>
+          <input
+            className="setting-input"
+            type="text"
+            placeholder="如：WeChat, DingTalk"
+            value={metadataAppsText}
+            onChange={e => setMetadataAppsText(e.target.value)}
+            onBlur={e => saveAppList('metadataOnlyApps', e.target.value)}
+          />
         </div>
 
         <div className="setting-group">
@@ -276,10 +315,51 @@ export default function SettingsPanel({ onBack }) {
         <div className="setting-group">
           <div className="setting-row">
             <div className="setting-label">
-              <span className="setting-name">最大记录数</span>
-              <span className="setting-desc">超出自动删除最旧的非收藏记录</span>
+              <span className="setting-name">自动清理</span>
+              <span className="setting-desc">收藏内容永不自动删除</span>
             </div>
-            <input className="setting-input" type="number" value={maxItems} onChange={e => handleMaxItems(e.target.value)} min={100} max={10000} />
+            <label className="switch">
+              <input type="checkbox" checked={retention.enabled} onChange={e => updateRetention({ enabled: e.target.checked })} />
+              <span className="slider"></span>
+            </label>
+          </div>
+          {retention.enabled && (
+            <>
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span className="setting-name">最大记录数</span>
+                  <span className="setting-desc">超出后删除最旧的未收藏记录（0 = 不限制）</span>
+                </div>
+                <input className="setting-input" type="number" value={retention.maxItems} onChange={e => updateRetention({ maxItems: parseInt(e.target.value) || 0 })} min={0} max={100000} />
+              </div>
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span className="setting-name">按天数清理</span>
+                  <span className="setting-desc">超过天数自动删除未收藏记录（0 = 关闭）</span>
+                </div>
+                <input className="setting-input" type="number" value={retention.maxDays} onChange={e => updateRetention({ maxDays: parseInt(e.target.value) || 0 })} min={0} max={3650} />
+              </div>
+              <div className="setting-row">
+                <div className="setting-label">
+                  <span className="setting-name">图片独立上限</span>
+                  <span className="setting-desc">未收藏图片超过数量自动清理（0 = 不限制）</span>
+                </div>
+                <input className="setting-input" type="number" value={retention.maxImageItems} onChange={e => updateRetention({ maxImageItems: parseInt(e.target.value) || 0 })} min={0} max={100000} />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">顺序粘贴</span>
+              <span className="setting-desc">Enter 复制后自动选中下一条，可连续粘贴</span>
+            </div>
+            <label className="switch">
+              <input type="checkbox" checked={pasteOpts.sequential} onChange={e => setPasteOption('sequential', e.target.checked)} />
+              <span className="slider"></span>
+            </label>
           </div>
         </div>
 
@@ -322,7 +402,9 @@ export default function SettingsPanel({ onBack }) {
           <div className="setting-row"><div className="setting-label"><span className="setting-name">快捷操作</span></div></div>
           <div className="setting-shortcuts">
             <div className="shortcut-row"><kbd>↑↓</kbd> <span>选择记录</span></div>
-            <div className="shortcut-row"><kbd>Enter</kbd> <span>复制选中</span></div>
+            <div className="shortcut-row"><kbd>1-9</kbd> <span>按序号选择记录</span></div>
+            <div className="shortcut-row"><kbd>Enter</kbd> <span>复制选中并下移</span></div>
+            <div className="shortcut-row"><kbd>Ctrl+Shift+V</kbd> <span>复制为纯文本（再按 Ctrl+V 粘贴）</span></div>
             <div className="shortcut-row"><kbd>Delete</kbd> <span>删除选中</span></div>
             <div className="shortcut-row"><kbd>Ctrl+F</kbd> <span>聚焦搜索</span></div>
             <div className="shortcut-row"><kbd>Esc</kbd> <span>清空搜索</span></div>

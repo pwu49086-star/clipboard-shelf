@@ -10,27 +10,19 @@ const crypto = require('crypto')
 const path = require('path')
 const fs = require('fs')
 const { eventBus, Events } = require('../core/event-bus')
+const { getForegroundSource, isSelfSource } = require('./source-capture')
+const { shouldCapture } = require('./capture-policy')
 
-// ====== Options（暂停监听 / 敏感内容保护） ======
-let options = { pause: false, skipSensitive: true }
+// ====== Capture Policy（捕获策略） ======
+let options = { enabled: true, skipSensitive: true, ignoreApps: [], metadataOnlyApps: [] }
 
 function setOptions(opts) {
   if (!opts) return
-  if (typeof opts.pause === 'boolean') options.pause = opts.pause
+  if (typeof opts.enabled === 'boolean') options.enabled = opts.enabled
+  if (typeof opts.pause === 'boolean') options.enabled = !opts.pause // 兼容旧配置
   if (typeof opts.skipSensitive === 'boolean') options.skipSensitive = opts.skipSensitive
-}
-
-function isSensitive(text) {
-  const patterns = [
-    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-    /\bsk-[A-Za-z0-9]{20,}\b/,
-    /github_pat_[A-Za-z0-9_]{20,}/,
-    /\bAKIA[0-9A-Z]{16}\b/,
-    /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/,
-    /(mongodb|postgres|mysql):\/\/[^\s:@]+:[^\s:@]+@/,
-    /\b(?:4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2}))[ -]?(?:[0-9]{4}[ -]?){3}\b/
-  ]
-  return patterns.some(p => p.test(text))
+  if (Array.isArray(opts.ignoreApps)) options.ignoreApps = opts.ignoreApps
+  if (Array.isArray(opts.metadataOnlyApps)) options.metadataOnlyApps = opts.metadataOnlyApps
 }
 
 // ====== Config ======
@@ -97,27 +89,61 @@ async function processQueue() {
 
 // ====== Process Item ======
 async function processItem(item) {
+  // 使用检测时刻随 item 携带的来源快照；worker 禁止重新获取前台窗口
+  let source = null
+  try {
+    source = await (item.sourcePromise || Promise.resolve(item.source || null))
+  } catch {
+    source = null
+  }
+  source = isSelfSource(source) ? null : source
+  const extra = {
+    sourceApp: source ? source.app : null,
+    sourceProcess: source ? source.process : null,
+    capturedAt: item.capturedAt || Date.now()
+  }
+
   if (item.type === 'text') {
-    // 发出事件，让 DB 和 UI 自己处理
+    const decision = shouldCapture({ text: item.content, sourceApp: extra.sourceApp, options })
+    if (decision.action === 'ignore') return
     eventBus.emit(Events.CLIPBOARD_TEXT, {
       type: 'text',
-      content: item.content,
-      createTime: Date.now()
+      content: decision.action === 'metadata' ? null : item.content,
+      metadataOnly: decision.action === 'metadata' ? 1 : 0,
+      sensitivity: decision.sensitivity,
+      createTime: Date.now(),
+      ...extra
     })
   } else if (item.type === 'image') {
-    // 保存图片（使用缓存的 PNG buffer 避免重复 toPNG()）
-    const saved = saveImage(item.image, item.pngBuffer)
-    if (!saved) return
+    const decision = shouldCapture({ text: '', sourceApp: extra.sourceApp, options })
+    if (decision.action === 'ignore') return
+
+    // PNG 编码/去重/落盘都在 worker 中执行，不阻塞复制事件
+    const pngBuffer = item.image.toPNG()
+    const hash = hashBuffer(pngBuffer)
+    if (seenImageHashes.has(hash)) return
+    seenImageHashes.add(hash)
+    if (seenImageHashes.size > 500) {
+      const arr = [...seenImageHashes]
+      arr.splice(0, 250)
+      seenImageHashes.clear()
+      arr.forEach(h => seenImageHashes.add(h))
+    }
+
+    const saved = decision.action === 'metadata' ? null : saveImage(item.image, pngBuffer)
 
     eventBus.emit(Events.CLIPBOARD_IMAGE, {
       type: 'image',
-      content: saved.filename,
-      filePath: saved.filePath,
-      thumbPath: saved.thumbPath,
+      content: saved ? saved.filename : null,
+      filePath: saved ? saved.filePath : null,
+      thumbPath: saved ? saved.thumbPath : null,
+      metadataOnly: decision.action === 'metadata' ? 1 : 0,
+      sensitivity: 0,
       createTime: Date.now(),
-      fileSize: saved.fileSize,
-      imageWidth: saved.width,
-      imageHeight: saved.height
+      fileSize: saved ? saved.fileSize : null,
+      imageWidth: saved ? saved.width : null,
+      imageHeight: saved ? saved.height : null,
+      ...extra
     })
   }
 }
@@ -161,7 +187,7 @@ function saveImage(img, cachedPngBuffer) {
 function checkClipboard() {
   try {
     const { clipboard } = require('electron')
-    if (options.pause) return
+    if (!options.enabled) return
     if (skipCount > 0) {
       skipCount--
       return
@@ -169,35 +195,31 @@ function checkClipboard() {
 
     const now = Date.now()
 
-    // 优先检查图片
     const img = clipboard.readImage()
     if (img && !img.isEmpty()) {
-      const buf = img.toPNG()
-      const hash = hashBuffer(buf)
-      if (seenImageHashes.has(hash)) return
-      seenImageHashes.add(hash)
-      // 限制 Set 大小，防止内存泄漏
-      if (seenImageHashes.size > 500) {
-        const arr = [...seenImageHashes]
-        arr.splice(0, 250)
-        seenImageHashes.clear()
-        arr.forEach(h => seenImageHashes.add(h))
+      const size = img.getSize()
+      // 快速预判：短时间内尺寸相同的图片跳过（精确去重在 worker 中做）
+      if (lastProcessTime && now - lastProcessTime < 2000 &&
+          size.width === lastImageSize.width && size.height === lastImageSize.height) {
+        return
       }
-      lastImageSize = img.getSize()
+      lastImageSize = size
       lastProcessTime = now
-      enqueue({ type: 'image', image: img, pngBuffer: buf })
+      enqueue({
+        type: 'image',
+        image: img,
+        sourcePromise: getForegroundSource(),
+        capturedAt: now
+      })
       return
     }
 
-    // 检查文字
     const text = clipboard.readText()
     const normalized = normalizeText(text)
     if (normalized) {
-      if (options.skipSensitive && isSensitive(normalized)) return
       const hash = hashText(normalized)
       if (seenTextHashes.has(hash)) return
       seenTextHashes.add(hash)
-      // 限制 Set 大小，防止内存泄漏
       if (seenTextHashes.size > 1000) {
         const arr = [...seenTextHashes]
         arr.splice(0, 500)
@@ -205,7 +227,12 @@ function checkClipboard() {
         arr.forEach(h => seenTextHashes.add(h))
       }
       lastProcessTime = now
-      enqueue({ type: 'text', content: normalized })
+      enqueue({
+        type: 'text',
+        content: normalized,
+        sourcePromise: getForegroundSource(),
+        capturedAt: now
+      })
     }
   } catch (err) {
     // 剪贴板被其他进程锁定，忽略
@@ -282,7 +309,6 @@ module.exports = {
   skipNextCopy,
   getStatus,
   loadFromDB,
-  _test: { normalizeText, hashText }
-  ,
+  _test: { normalizeText, hashText, processItem, enqueue, processQueue },
   setOptions
 }

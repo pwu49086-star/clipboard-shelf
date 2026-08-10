@@ -336,6 +336,17 @@ mark.hl {
   flex-shrink: 0;
 }
 .item-ocr-badge:hover { background: #0891B2; color: #fff; }
+.item-reveal-btn {
+  background: rgba(234,179,8,.12);
+  color: #B45309;
+  border: none;
+  padding: 2px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+  flex-shrink: 0;
+}
+.item-reveal-btn:hover { background: #D97706; color: #fff; }
 
 .item-inline-edit {
   width: 100%;
@@ -370,6 +381,12 @@ mark.hl {
   transform: scale(1.03);
 }
 .item-action-btn:active { transform: scale(0.97); }
+.item-action-btn:disabled {
+  opacity: .35; cursor: not-allowed;
+}
+.item-action-btn:disabled:hover {
+  background: none; color: var(--c-gray-400); transform: none;
+}
 .item-action-btn.favorite { color: var(--color-warning); }
 .item-action-btn.delete:hover { color: var(--color-danger); background: rgba(239,68,68,.08); }
 .item-action-btn.confirm-delete {

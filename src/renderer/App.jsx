@@ -6,6 +6,9 @@ import SettingsPanel from './components/SettingsPanel'
 import PetSettings from './components/PetSettings'
 import NotesPanel from './components/NotesPanel'
 import CommandPalette from './components/CommandPalette'
+import pasteUtils from '../shared/paste-utils.cjs'
+
+const { numberedIndex, nextIndex, plainTextPayload } = pasteUtils
 
 const ICONS = { Moon, Code, Link, Flame, TrendingUp, Smile }
 
@@ -28,6 +31,7 @@ export default function App() {
   const [petFeedback, setPetFeedback] = useState(null)
   const [multiMode, setMultiMode] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [pasteOpts, setPasteOpts] = useState({ sequential: true })
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem('cs-theme') || 'light' } catch { return 'light' }
   })
@@ -48,6 +52,13 @@ export default function App() {
   const handleDeleteRef = useRef(null)
 
   useEffect(() => { if (pinned) window.api.setAlwaysOnTop(true) }, [])
+
+  // 粘贴选项（顺序粘贴开关；从设置页返回时刷新）
+  useEffect(() => {
+    if (panel === 'main' && window.api?.getPasteOptions) {
+      window.api.getPasteOptions().then(r => r && setPasteOpts(r)).catch(() => {})
+    }
+  }, [panel])
 
   // 加密状态
   useEffect(() => {
@@ -312,11 +323,41 @@ export default function App() {
         setMultiMode(true)
         return
       }
+      if (e.ctrlKey && e.shiftKey && (e.key === 'V' || e.key === 'v')) {
+        e.preventDefault()
+        const item = filteredItems.find(i => i.id === selectedId)
+        const payload = plainTextPayload(item)
+        if (!payload) {
+          showToast(item ? '仅文字支持纯文本粘贴' : '先选择一条文字记录')
+          return
+        }
+        window.api.copyPlainText(payload)
+        showToast('已复制纯文本，按 Ctrl+V 粘贴')
+        return
+      }
       if (!filteredItems.length || filter === 'notes') return
       const idx = filteredItems.findIndex(i => i.id === selectedId)
+      const numIdx = !multiMode && !e.ctrlKey && !e.altKey && !e.metaKey
+        ? numberedIndex(e.key, filteredItems.length)
+        : null
+      if (numIdx !== null) { e.preventDefault(); const id = filteredItems[numIdx].id; setSelectedIds(new Set([id])); setSelectedId(id); return }
       if (e.key === 'ArrowDown') { e.preventDefault(); setSelectedId(filteredItems[(idx + 1) % filteredItems.length].id) }
       else if (e.key === 'ArrowUp') { e.preventDefault(); setSelectedId(filteredItems[idx > 0 ? idx - 1 : filteredItems.length - 1].id) }
-      else if (e.key === 'Enter' && selectedId !== null) { e.preventDefault(); const item = filteredItems.find(i => i.id === selectedId); if (item) handleCopyRef.current(item) }
+      else if (e.key === 'Enter' && selectedId !== null) {
+        e.preventDefault()
+        const item = filteredItems.find(i => i.id === selectedId)
+        if (item) {
+          handleCopyRef.current(item)
+          if (pasteOpts.sequential) {
+            const next = nextIndex(idx, filteredItems.length)
+            if (next !== null) {
+              const nextId = filteredItems[next].id
+              setSelectedIds(new Set([nextId]))
+              setSelectedId(nextId)
+            }
+          }
+        }
+      }
       else if (e.key === 'Delete' && selectedId !== null) {
         e.preventDefault()
         if (deleteConfirmId === selectedId) {
@@ -332,7 +373,7 @@ export default function App() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [items, selectedId, search, panel, deleteConfirmId, filter, selectedIds, filteredItems, showToast])
+  }, [items, selectedId, search, panel, deleteConfirmId, filter, selectedIds, filteredItems, showToast, pasteOpts])
 
   return (
     <div className="app" onDragOver={e => e.preventDefault()} onDrop={handleDrop}>

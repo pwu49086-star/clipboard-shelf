@@ -51,8 +51,10 @@ function setupAutoUpdater() {
 // ====== Services (loaded before crash handler to avoid TDZ) ======
 const db = require('./services/db-service')
 const clipboardPipeline = require('./services/clipboard-pipeline')
+const sourceCapture = require('./services/source-capture')
 const ocrService = require('./services/ocr-service')
 const encryptionService = require('./services/encryption-service')
+const retention = require('./services/retention')
 const petEngine = require('./pet/pet-engine')
 const petTasks = require('./pet-tasks')
 
@@ -621,16 +623,48 @@ function setupIPC() {
   })
   ipcMain.handle('encryption:lock', () => encryptionService.lock())
 
-  // 监听选项（暂停 / 敏感内容保护）
+  // 监听选项（暂停 / 敏感内容保护 / 忽略应用 / 仅元数据应用）
   ipcMain.handle('settings:getCaptureOptions', () => ({
     pause: !!config.pauseCapture,
-    skipSensitive: config.skipSensitive !== false
+    skipSensitive: config.skipSensitive !== false,
+    ignoreApps: Array.isArray(config.ignoreApps) ? config.ignoreApps : [],
+    metadataOnlyApps: Array.isArray(config.metadataOnlyApps) ? config.metadataOnlyApps : []
   }))
   ipcMain.handle('settings:setCaptureOptions', (e, opts) => {
     if (opts && typeof opts.pause === 'boolean') { config.pauseCapture = opts.pause; saveConfig() }
     if (opts && typeof opts.skipSensitive === 'boolean') { config.skipSensitive = opts.skipSensitive; saveConfig() }
-    clipboardPipeline.setOptions({ pause: !!config.pauseCapture, skipSensitive: config.skipSensitive !== false })
+    if (opts && Array.isArray(opts.ignoreApps)) { config.ignoreApps = opts.ignoreApps.map(String).filter(Boolean); saveConfig() }
+    if (opts && Array.isArray(opts.metadataOnlyApps)) { config.metadataOnlyApps = opts.metadataOnlyApps.map(String).filter(Boolean); saveConfig() }
+    clipboardPipeline.setOptions({
+      pause: !!config.pauseCapture,
+      skipSensitive: config.skipSensitive !== false,
+      ignoreApps: config.ignoreApps || [],
+      metadataOnlyApps: config.metadataOnlyApps || []
+    })
     return { ok: true }
+  })
+
+  // 自动清理（retention）
+  ipcMain.handle('settings:getRetention', () => retention.getPolicy())
+  ipcMain.handle('settings:setRetention', (e, policy) => {
+    const normalized = retention.configure(policy || {})
+    config.retention = normalized
+    saveConfig()
+    retention.run()
+    return { ...normalized }
+  })
+
+  // 粘贴选项（编号 / 顺序粘贴）
+  ipcMain.handle('settings:getPasteOptions', () => ({
+    sequential: !config.paste || config.paste.sequential !== false
+  }))
+  ipcMain.handle('settings:setPasteOptions', (e, opts) => {
+    config.paste = {
+      ...(config.paste || {}),
+      sequential: !opts || opts.sequential !== false
+    }
+    saveConfig()
+    return { ...config.paste }
   })
 
   // 关于 / 更新
@@ -729,7 +763,12 @@ app.whenReady().then(async () => {
   const imagesDir = path.join(app.getPath('userData'), 'images')
   imagesDirGlobal = imagesDir
   clipboardPipeline.setImageDir(imagesDir)
-  clipboardPipeline.setOptions({ pause: !!config.pauseCapture, skipSensitive: config.skipSensitive !== false })
+  clipboardPipeline.setOptions({
+    pause: !!config.pauseCapture,
+    skipSensitive: config.skipSensitive !== false,
+    ignoreApps: config.ignoreApps || [],
+    metadataOnlyApps: config.metadataOnlyApps || []
+  })
 
   // 设置 IPC
   setupIPC()
@@ -749,15 +788,13 @@ app.whenReady().then(async () => {
   tray.setup(win)
 
   // 启动剪贴板监听（先加载已有数据去重）
+  sourceCapture.start().catch(() => {})
   clipboardPipeline.loadFromDB(db.getAll({ limit: 5000 }))
   clipboardPipeline.start()
 
-  // 清理旧数据
-  const deleted = db.cleanOld(2000)
-  for (const row of deleted) {
-    if (row.filePath) try { fs.unlinkSync(row.filePath) } catch {}
-    if (row.thumbPath) try { fs.unlinkSync(row.thumbPath) } catch {}
-  }
+  // 自动清理（可配置 retention：maxItems/maxDays/图片独立上限，收藏永不删）
+  retention.configure(config.retention || {})
+  retention.start()
 
   eventBus.emit(Events.APP_READY)
 
@@ -787,6 +824,8 @@ app.on('window-all-closed', (e) => e.preventDefault())
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
   clipboardPipeline.stop()
+  sourceCapture.stop()
+  retention.stop()
   db.close()
   eventBus.emit(Events.APP_QUIT)
 })

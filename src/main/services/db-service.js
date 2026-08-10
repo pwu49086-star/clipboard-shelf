@@ -13,6 +13,39 @@ const fs = require('fs')
 const { eventBus, Events } = require('../core/event-bus')
 const encryption = require('./encryption-service')
 
+// ====== Schema migrations（user_version 框架） ======
+const MIGRATIONS = [
+  {
+    version: 1,
+    sql: [
+      'ALTER TABLE items ADD COLUMN sourceApp TEXT',
+      'ALTER TABLE items ADD COLUMN sourceProcess TEXT',
+      'ALTER TABLE items ADD COLUMN capturedAt INTEGER',
+      'ALTER TABLE items ADD COLUMN sensitivity INTEGER DEFAULT 0',
+      'ALTER TABLE items ADD COLUMN metadataOnly INTEGER DEFAULT 0',
+      'CREATE INDEX IF NOT EXISTS idx_items_source ON items(sourceApp)'
+    ]
+  }
+]
+
+function runMigrations() {
+  if (!db) return
+  let current = db.pragma('user_version', { simple: true })
+  const migrate = db.transaction(() => {
+    for (const m of MIGRATIONS) {
+      if (m.version <= current) continue
+      for (const sql of m.sql) {
+        try { db.exec(sql) } catch (e) {
+          console.warn('[DBService] migration skip:', sql, e.message)
+        }
+      }
+      db.pragma(`user_version = ${m.version}`)
+      current = m.version
+    }
+  })
+  migrate()
+}
+
 let electronApp = null
 try { electronApp = require('electron').app } catch {}
 
@@ -111,7 +144,12 @@ async function init() {
       createTime INTEGER NOT NULL,
       fileSize INTEGER,
       imageWidth INTEGER,
-      imageHeight INTEGER
+      imageHeight INTEGER,
+      sourceApp TEXT,
+      sourceProcess TEXT,
+      capturedAt INTEGER,
+      sensitivity INTEGER DEFAULT 0,
+      metadataOnly INTEGER DEFAULT 0
     );
     CREATE INDEX IF NOT EXISTS idx_items_type ON items(type);
     CREATE INDEX IF NOT EXISTS idx_items_favorite ON items(isFavorite);
@@ -135,6 +173,9 @@ async function init() {
   try { db.exec('ALTER TABLE items ADD COLUMN imageHeight INTEGER') } catch {}
   try { db.exec('ALTER TABLE notes ADD COLUMN remindAt INTEGER') } catch {}
   try { db.exec('ALTER TABLE notes ADD COLUMN reminded INTEGER DEFAULT 0') } catch {}
+
+  // v1.4 迁移框架（user_version）
+  runMigrations()
 
   // FTS5 全文索引（trigram 支持英文子串）
   try {
@@ -196,8 +237,8 @@ function insert(item) {
   const encContent = encryption.isEnabled() ? encryption.encrypt(item.content || '') : item.content
   const encOcr = encryption.isEnabled() ? encryption.encrypt(item.ocrText || '') : item.ocrText
   const info = db.prepare(`
-    INSERT INTO items (type, content, filePath, thumbPath, ocrText, isFavorite, createTime, fileSize, imageWidth, imageHeight)
-    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+    INSERT INTO items (type, content, filePath, thumbPath, ocrText, isFavorite, createTime, fileSize, imageWidth, imageHeight, sourceApp, sourceProcess, capturedAt, sensitivity, metadataOnly)
+    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     item.type,
     encContent,
@@ -207,7 +248,12 @@ function insert(item) {
     item.createTime || Date.now(),
     item.fileSize || null,
     item.imageWidth || null,
-    item.imageHeight || null
+    item.imageHeight || null,
+    item.sourceApp || null,
+    item.sourceProcess || null,
+    item.capturedAt || null,
+    item.sensitivity || 0,
+    item.metadataOnly || 0
   )
   const id = Number(info.lastInsertRowid)
   if (!encryption.isEnabled()) syncFtsInsert(id, item.content || '', item.ocrText || '')
@@ -325,25 +371,87 @@ function clearNonFavorites() {
 }
 
 function cleanOld(maxItems = 2000) {
+  return cleanByPolicy({ enabled: true, maxItems, maxDays: 0, maxImageItems: 0 })
+}
+
+/**
+ * 可配置 retention 清理
+ *
+ * policy（已归一化，见 services/retention.js）：
+ *   enabled         - false 时完全关闭自动清理
+ *   maxItems        - 最大总记录数（0 = 不限制）；超过后删除最旧的未收藏记录
+ *   maxDays         - 按天数清理（0 = 不启用）；超过天数的未收藏记录会被删除
+ *   maxImageItems   - 图片独立保留上限（0 = 不限制）；仅作用于未收藏图片
+ *
+ * 规则：
+ *   - 收藏内容永不自动删除
+ *   - 达到上限时优先删除最旧的未收藏记录
+ *   - 返回被删行（含 filePath/thumbPath），由调用方负责删除文件
+ */
+function cleanByPolicy(policy = {}) {
   if (!db) return []
-  const count = db.prepare('SELECT COUNT(*) AS c FROM items').get().c
-  if (count <= maxItems) return []
+  if (policy.enabled === false) return []
 
-  const toDelete = count - maxItems
-  const rows = db.prepare(`
-    SELECT id, filePath, thumbPath FROM items
-    WHERE isFavorite = 0
-    ORDER BY createTime ASC
-    LIMIT ?
-  `).all(toDelete)
+  const num = (v, dflt) => Number.isFinite(v) ? Math.max(0, Math.floor(v)) : dflt
+  const maxItems = num(policy.maxItems, 0)
+  const maxDays = num(policy.maxDays, 0)
+  const maxImageItems = num(policy.maxImageItems, 0)
 
-  const ids = rows.map(r => r.id)
-  if (ids.length > 0) {
-    const placeholders = ids.map(() => '?').join(',')
-    db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids)
-    for (const id of ids) syncFtsDelete(id)
-    eventBus.emit(Events.DB_BATCH_DELETE, { ids })
+  const candidates = new Map() // id -> row
+  const now = Date.now()
+
+  // 按天数：删除超过 maxDays 的未收藏记录
+  if (maxDays > 0) {
+    const cutoff = now - maxDays * 24 * 60 * 60 * 1000
+    for (const r of db.prepare(`
+      SELECT id, filePath, thumbPath FROM items
+      WHERE isFavorite = 0 AND createTime < ?
+    `).all(cutoff)) {
+      candidates.set(r.id, r)
+    }
   }
+
+  // 按总条数：超过 maxItems 后删最旧未收藏
+  if (maxItems > 0) {
+    const count = db.prepare('SELECT COUNT(*) AS c FROM items').get().c
+    const toDelete = count - maxItems
+    if (toDelete > 0) {
+      for (const r of db.prepare(`
+        SELECT id, filePath, thumbPath FROM items
+        WHERE isFavorite = 0
+        ORDER BY createTime ASC
+        LIMIT ?
+      `).all(toDelete)) {
+        candidates.set(r.id, r)
+      }
+    }
+  }
+
+  // 图片独立上限：仅未收藏图片
+  if (maxImageItems > 0) {
+    const imageCount = db.prepare(`
+      SELECT COUNT(*) AS c FROM items WHERE type = 'image' AND isFavorite = 0
+    `).get().c
+    const toDelete = imageCount - maxImageItems
+    if (toDelete > 0) {
+      for (const r of db.prepare(`
+        SELECT id, filePath, thumbPath FROM items
+        WHERE type = 'image' AND isFavorite = 0
+        ORDER BY createTime ASC
+        LIMIT ?
+      `).all(toDelete)) {
+        candidates.set(r.id, r)
+      }
+    }
+  }
+
+  if (candidates.size === 0) return []
+  const rows = [...candidates.values()]
+  const ids = rows.map(r => r.id)
+  const placeholders = ids.map(() => '?').join(',')
+  db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids)
+  for (const id of ids) syncFtsDelete(id)
+  eventBus.emit(Events.DB_BATCH_DELETE, { ids })
   return rows
 }
 
@@ -470,8 +578,9 @@ function decryptAllAndRebuildFts() {
 
 module.exports = {
   init, getAll, insert, remove, toggleFavorite, updateContent, updateOcrText,
-  clearNonFavorites, cleanOld, close, save, saveImmediate,
+  clearNonFavorites, cleanOld, cleanByPolicy, close, save, saveImmediate,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin,
   getDueReminders, markNoteReminded,
-  clearFts, reEncryptAll, decryptAllAndRebuildFts
+  clearFts, reEncryptAll, decryptAllAndRebuildFts,
+  MIGRATIONS
 }
