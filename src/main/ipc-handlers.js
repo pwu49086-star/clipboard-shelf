@@ -5,7 +5,7 @@
  * 通过 EventBus 与服务层通信
  */
 
-const { ipcMain, clipboard, shell, desktopCapturer, nativeImage, app, BrowserWindow } = require('electron')
+const { ipcMain, clipboard, shell, dialog, desktopCapturer, nativeImage, app, BrowserWindow } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
@@ -427,6 +427,28 @@ function setup(mainWindow) {
 
   // 剪贴板读取（命令面板用）
   ipcMain.handle('clipboard:readText', () => clipboard.readText())
+
+  // 导出 Markdown（多选输出）：保存对话框 + 写入 + 打开所在文件夹
+  ipcMain.handle('output:exportMarkdown', async (event, payload) => {
+    const content = payload && typeof payload.content === 'string' ? payload.content.trim() : ''
+    if (!content) return { ok: false, error: '内容为空' }
+    const defaultName = (payload && payload.defaultName) ||
+      `维修记录-${new Date().toISOString().slice(0, 10)}.md`
+    const safeName = String(defaultName).endsWith('.md') ? String(defaultName) : String(defaultName) + '.md'
+    const savePath = dialog.showSaveDialogSync(mainWindow, {
+      title: '导出 Markdown',
+      defaultPath: safeName,
+      filters: [{ name: 'Markdown', extensions: ['md'] }]
+    })
+    if (!savePath) return { canceled: true }
+    try {
+      fs.writeFileSync(savePath, content, 'utf-8')
+      shell.showItemInFolder(savePath)
+      return { ok: true, path: savePath }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  })
 
   // 打开外部文件夹（命令面板用）
   ipcMain.handle('system:openPath', (e, p) => {

@@ -9,10 +9,12 @@ import CommandPalette from './components/CommandPalette'
 import pasteUtils from '../shared/paste-utils.cjs'
 import itemsMerge from '../shared/items-merge.cjs'
 import queryUtils from '../shared/entity-query.cjs'
+import outputUtils from '../shared/collection-output.cjs'
 
 const { numberedIndex, nextIndex, plainTextPayload } = pasteUtils
 const { mergeItemIntoList } = itemsMerge
 const { parseEntityQuery, filterToSearchText, stripFilterToken } = queryUtils
+const { buildPlainText, buildMarkdown, buildWorkOrderDraft } = outputUtils
 
 const ICONS = { Moon, Code, Link, Flame, TrendingUp, Smile }
 
@@ -32,6 +34,7 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [previewItem, setPreviewItem] = useState(null)
+  const [draftModal, setDraftModal] = useState(null)
   const [petFeedback, setPetFeedback] = useState(null)
   const [multiMode, setMultiMode] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -204,6 +207,67 @@ export default function App() {
   const handleRemoveEntityFilter = useCallback((filter) => {
     setSearch(prev => stripFilterToken(prev, filter))
   }, [])
+
+  const fetchSelectedItems = useCallback(async () => {
+    const ids = [...selectedIds]
+    if (ids.length === 0) return { items: [], skipped: 0 }
+    const rows = await window.api.getAll({ ids, limit: Math.max(ids.length, 1), withEntities: true })
+    const map = new Map(rows.map(i => [i.id, i]))
+    const items = []
+    let skipped = 0
+    for (const id of ids) {
+      const it = map.get(id)
+      if (it) items.push(it)
+      else skipped++
+    }
+    return { items, skipped }
+  }, [selectedIds])
+
+  const handleCopyAll = useCallback(async () => {
+    if (!selectedIds.size) { showToast('请先选择记录'); return }
+    const { items, skipped } = await fetchSelectedItems()
+    const out = buildPlainText(items)
+    if (!out.count) { showToast('没有可输出的记录'); return }
+    await window.api.copyPlainText({ type: 'text', content: out.text })
+    showToast(`已复制 ${out.count} 条记录${skipped ? `，${skipped} 条已不存在` : ''}`)
+  }, [selectedIds, fetchSelectedItems, showToast])
+
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!selectedIds.size) { showToast('请先选择记录'); return }
+    const { items, skipped } = await fetchSelectedItems()
+    const out = buildMarkdown(items)
+    if (!out.count) { showToast('没有可输出的记录'); return }
+    await window.api.copyPlainText({ type: 'text', content: out.text })
+    showToast(`Markdown 已复制（${out.count} 条${skipped ? `，${skipped} 条已不存在` : ''}）`)
+  }, [selectedIds, fetchSelectedItems, showToast])
+
+  const exportMarkdownContent = useCallback(async (content) => {
+    const r = await window.api.exportMarkdown({
+      content,
+      defaultName: `维修记录-${new Date().toISOString().slice(0, 10)}.md`
+    })
+    if (!r) return
+    if (r.canceled) { showToast('已取消导出'); return }
+    if (r.ok) showToast('已导出 Markdown')
+    else showToast('导出失败：' + (r.error || '未知错误'))
+  }, [showToast])
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!selectedIds.size) { showToast('请先选择记录'); return }
+    const { items, skipped } = await fetchSelectedItems()
+    const out = buildMarkdown(items)
+    if (!out.count) { showToast('没有可输出的记录'); return }
+    await exportMarkdownContent(out.text)
+    if (skipped) showToast(`已导出 ${out.count} 条，${skipped} 条已不存在`)
+  }, [selectedIds, fetchSelectedItems, exportMarkdownContent, showToast])
+
+  const handleWorkOrderDraft = useCallback(async () => {
+    if (!selectedIds.size) { showToast('请先选择记录'); return }
+    const { items, skipped } = await fetchSelectedItems()
+    const out = buildWorkOrderDraft(items)
+    if (!out.count) { showToast('没有可输出的记录'); return }
+    setDraftModal({ content: out.text, skipped })
+  }, [selectedIds, fetchSelectedItems])
 
   const parsedQuery = useMemo(() => parseEntityQuery(search), [search])
 
@@ -443,6 +507,10 @@ export default function App() {
               <span className="batch-count">已选 {selectedIds.size} 条</span>
               <button className="batch-btn" onClick={() => { setSelectedIds(new Set()); setMultiMode(false) }}>取消</button>
               <button className="batch-btn" onClick={() => setSelectedIds(new Set(filteredItems.map(i => i.id)))}>全选</button>
+              <button className="batch-btn" onClick={handleCopyAll} disabled={selectedIds.size === 0}>复制全部</button>
+              <button className="batch-btn" onClick={handleCopyMarkdown} disabled={selectedIds.size === 0}>Markdown</button>
+              <button className="batch-btn" onClick={handleExportMarkdown} disabled={selectedIds.size === 0}>导出</button>
+              <button className="batch-btn" onClick={handleWorkOrderDraft} disabled={selectedIds.size === 0}>工单草稿</button>
               <button className="batch-btn batch-btn-danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0}>删除选中</button>
             </div>
           )}
@@ -543,6 +611,31 @@ export default function App() {
               <div className="modal-actions">
                 <button className="btn btn-cancel" onClick={() => setEditModal(null)}>取消</button>
                 <button className="btn btn-save" onClick={saveEditModal}>保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {draftModal && (
+        <div className="modal-overlay" onClick={() => setDraftModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <span className="modal-title">维修工单草稿{draftModal.skipped ? `（${draftModal.skipped} 条已不存在）` : ''}</span>
+              <button className="modal-close" onClick={() => setDraftModal(null)}>×</button>
+            </div>
+            <textarea
+              className="modal-textarea"
+              value={draftModal.content}
+              onChange={e => setDraftModal(m => ({ ...m, content: e.target.value }))}
+              placeholder="工单草稿"
+            />
+            <div className="modal-footer">
+              <span className="modal-char-count">{draftModal.content.length} 字</span>
+              <div className="modal-actions">
+                <button className="btn btn-cancel" onClick={() => setDraftModal(null)}>关闭</button>
+                <button className="btn" onClick={() => window.api.copyPlainText({ type: 'text', content: draftModal.content }).then(() => showToast('工单草稿已复制'))}>复制</button>
+                <button className="btn btn-save" onClick={() => exportMarkdownContent(draftModal.content)}>导出 Markdown</button>
               </div>
             </div>
           </div>
