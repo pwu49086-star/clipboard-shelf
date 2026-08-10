@@ -190,6 +190,25 @@ html, body {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px var(--color-primary-light);
 }
+.search-filter-chips {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  padding: 6px 2px 0;
+}
+.search-filter-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(79,70,229,.12);
+  color: #4F46E5;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.search-filter-chip-remove {
+  border: none; background: none; color: inherit;
+  cursor: pointer; font-size: 13px; line-height: 1;
+  padding: 0 2px;
+}
+.search-filter-chip-remove:hover { color: var(--color-danger); }
 .search-icon { color: var(--color-text-muted); flex-shrink: 0; }
 .search-input {
   flex: 1; border: none; background: none; outline: none;
@@ -347,6 +366,17 @@ mark.hl {
   flex-shrink: 0;
 }
 .item-reveal-btn:hover { background: #D97706; color: #fff; }
+.entity-chip {
+  background: rgba(79,70,229,.10);
+  color: #4F46E5;
+  border: none;
+  padding: 2px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+  flex-shrink: 0;
+}
+.entity-chip:hover { background: #4F46E5; color: #fff; }
 
 .item-inline-edit {
   width: 100%;

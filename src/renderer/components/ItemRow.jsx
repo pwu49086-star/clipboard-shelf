@@ -47,7 +47,9 @@ function highlightText(text, query) {
   return parts.length ? <>{parts}</> : text
 }
 
-const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, searchQuery }) {
+const ENTITY_LABEL = { brand: '品牌', model: '型号', fault_code: '故障', refrigerant: '制冷剂' }
+
+const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, searchQuery, onEntityClick }) {
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -59,6 +61,9 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
 
   const isImage = item.type === 'image'
   const isMasked = item.sensitivity === 1 && !revealed
+  const entityChips = (!item.metadataOnly && !item.sensitivity)
+    ? (item.entities || []).filter(e => ENTITY_LABEL[e.type]).slice(0, 4)
+    : []
   const handleRowClick = useCallback((e) => {
     if (isImage && !e?.shiftKey && !e?.ctrlKey) {
       onEdit(item)
@@ -236,6 +241,16 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
           )}
           <div className="item-meta">
             {meta.map((m, i) => <span key={i}>{m}</span>)}
+            {entityChips.map((e, i) => (
+              <button
+                key={i}
+                className="entity-chip"
+                title={`过滤：${ENTITY_LABEL[e.type]}:${e.value}`}
+                onClick={(ev) => { ev.stopPropagation(); if (onEntityClick) onEntityClick(e.type, e.value) }}
+              >
+                {ENTITY_LABEL[e.type]}:{e.value}
+              </button>
+            ))}
             {item.sensitivity === 1 && (
               <button className="item-reveal-btn" onClick={(e) => { e.stopPropagation(); setRevealed(r => !r) }}>
                 {revealed ? '打码' : '显示'}

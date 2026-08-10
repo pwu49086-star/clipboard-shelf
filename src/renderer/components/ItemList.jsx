@@ -3,7 +3,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { Clipboard, SearchX } from 'lucide-react'
 import ItemRow from './ItemRow'
 
-export default function ItemList({ items, selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, loading, searchQuery, emptyHint = '剪贴板为空' }) {
+export default function ItemList({ items, selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, loading, searchQuery, onEntityClick, emptyHint = '剪贴板为空' }) {
   const virtuosoRef = useRef(null)
 
   // 选中项滚动到可见区域
@@ -32,8 +32,9 @@ export default function ItemList({ items, selectedId, selectedIds, multiMode, on
       onEditContent={onEditContent}
       onOpenEdit={onOpenEdit}
       searchQuery={searchQuery}
+      onEntityClick={onEntityClick}
     />
-  ), [selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, searchQuery])
+  ), [selectedId, selectedIds, multiMode, onSelect, onCopy, onDelete, onToggleFavorite, onEdit, onEditContent, onOpenEdit, searchQuery, onEntityClick])
 
   if (loading) {
     return (

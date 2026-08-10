@@ -11,6 +11,12 @@
 
 const { eventBus, Events } = require('../core/event-bus')
 const db = require('./db-service')
+const {
+  BRANDS,
+  REFRIGERANTS,
+  FAULT_LETTERS,
+  normalizeModel
+} = require('../../shared/entity-rules.cjs')
 
 // ====== 常量 ======
 const MAX_ANALYZE_LEN = 10000
@@ -23,21 +29,9 @@ const MEMORY_ONLY_TYPES = new Set(['phone', 'email'])
 
 // ====== 词典与规则 ======
 
-const BRANDS = [
-  { canonical: '大金', aliases: ['大金', 'daikin'] },
-  { canonical: '格力', aliases: ['格力', 'gree'] },
-  { canonical: '美的', aliases: ['美的', 'midea'] },
-  { canonical: '日立', aliases: ['日立', 'hitachi'] },
-  { canonical: '三菱', aliases: ['三菱', 'mitsubishi'] },
-  { canonical: '松下', aliases: ['松下', 'panasonic'] },
-  { canonical: '富士通将军', aliases: ['富士通将军', '富士通', 'fujitsu general', 'fujitsu'] }
-]
-
 const HVAC_CTX = /(空调|型号|外机|内机|故障|代码|错误|保护|异常|报错|维修|手册|多联机|VRV|VRF|压缩机|制冷|制热|安装|调试|售后|遥控|说明书)/i
 const FAULT_CTX = /(故障|代码|错误|保护|异常|报错|err|fault)/i
 const REFRIGERANT_CTX = /\b(R22|R410A|R32|R454B)\b/i
-
-const REFRIGERANTS = ['R22', 'R410A', 'R32', 'R454B']
 
 const MODEL_PATTERNS = [
   // 大金
@@ -75,7 +69,6 @@ const GENERIC_MODEL_BLACKLIST = [
   'USB', 'HDMI', 'WIFI', 'BLUETOOTH', 'FTP', 'SMTP', 'IMAP', 'POP3'
 ]
 
-const FAULT_LETTERS = 'UEFHJLPAC'
 const FAULT_RE = new RegExp(`\\b([${FAULT_LETTERS}][0-9]{1,2})\\b`, 'g')
 
 const URL_RE = /https?:\/\/[^\s<>"'“”‘’，。；：！？、]+/gi
@@ -84,10 +77,6 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,}/g
 
 function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function normalizeModel(raw) {
-  return String(raw).toUpperCase().replace(/[-/\s]/g, '')
 }
 
 function normalizeUrl(raw) {

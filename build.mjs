@@ -30,6 +30,11 @@ async function buildPreload() {
   console.log('✓ preload copied')
 }
 
+async function buildShared() {
+  copyDir(path.resolve(__dirname, 'src/shared'), path.resolve(__dirname, 'out/shared'))
+  console.log('✓ shared copied')
+}
+
 async function buildRenderer() {
   await build({
     root: path.resolve(__dirname, 'src/renderer'),
@@ -58,7 +63,7 @@ async function buildRenderer() {
 
 async function main() {
   try {
-    await Promise.all([buildMain(), buildPreload(), buildRenderer()])
+    await Promise.all([buildMain(), buildPreload(), buildShared(), buildRenderer()])
     console.log('\n✓ all built successfully')
   } catch (e) {
     console.error('Build failed:', e)

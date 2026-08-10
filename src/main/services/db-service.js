@@ -12,6 +12,11 @@ const path = require('path')
 const fs = require('fs')
 const { eventBus, Events } = require('../core/event-bus')
 const encryption = require('./encryption-service')
+const {
+  ENTITY_TYPES,
+  ENTITY_DISPLAY_INDEX,
+  normalizeQuery
+} = require('../../shared/entity-rules.cjs')
 
 // ====== Schema migrations（user_version 框架） ======
 const MIGRATIONS = [
@@ -301,21 +306,99 @@ function remove(id) {
   return item || null
 }
 
-function getAll({ search = '', limit = 200, type = null, favorite = null } = {}) {
+// ====== Entity 查询辅助（v1.6.0） ======
+
+function normalizeEntityFilters(filters = []) {
+  const out = []
+  for (const f of filters) {
+    const type = String((f && f.type) || '').trim()
+    if (!ENTITY_TYPES.has(type)) continue
+    const value = normalizeQuery(type, f.value)
+    if (!value) continue
+    out.push({ type, value })
+  }
+  return out
+}
+
+function entityIdSetForFilters(filters = []) {
+  const normalized = normalizeEntityFilters(filters)
+  if (normalized.length === 0) return null
+  let set = null
+  for (const f of normalized) {
+    const rows = db.prepare('SELECT item_id FROM entities WHERE type = ? AND value = ?').all(f.type, f.value)
+    const cur = new Set(rows.map(r => r.item_id))
+    set = set ? new Set([...set].filter(id => cur.has(id))) : cur
+    if (set.size === 0) break
+  }
+  return set
+}
+
+function entityInClause(set, alias = '') {
+  const ids = [...set]
+  const prefix = alias ? alias + '.' : ''
+  return {
+    clause: ` AND ${prefix}id IN (${ids.map(() => '?').join(',')})`,
+    params: ids
+  }
+}
+
+function attachEntities(rows, withEntities) {
+  if (!withEntities || !rows || rows.length === 0) return rows
+  const map = new Map()
+  const ids = rows.map(r => r.id)
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500)
+    const ph = chunk.map(() => '?').join(',')
+    const ents = db.prepare(`
+      SELECT item_id, type, value, confidence FROM entities WHERE item_id IN (${ph})
+    `).all(...chunk)
+    for (const e of ents) {
+      if (!map.has(e.item_id)) map.set(e.item_id, [])
+      map.get(e.item_id).push({ type: e.type, value: e.value, confidence: e.confidence })
+    }
+  }
+  for (const row of rows) {
+    const list = (map.get(row.id) || []).slice()
+    list.sort((a, b) => {
+      const ia = ENTITY_DISPLAY_INDEX.has(a.type) ? ENTITY_DISPLAY_INDEX.get(a.type) : 99
+      const ib = ENTITY_DISPLAY_INDEX.has(b.type) ? ENTITY_DISPLAY_INDEX.get(b.type) : 99
+      return ia - ib
+    })
+    row.entities = list
+  }
+  return rows
+}
+
+function getAll({
+  search = '',
+  limit = 200,
+  type = null,
+  favorite = null,
+  entityFilters = [],
+  withEntities = false,
+  sort = 'default'
+} = {}) {
   if (!db) return []
   const trimmed = String(search).trim()
+  const entitySet = entityIdSetForFilters(entityFilters)
+  if (entitySet && entitySet.size === 0) return []
+
+  const orderBy = sort === 'time' ? 'ORDER BY createTime DESC' : 'ORDER BY isFavorite DESC, createTime DESC'
+  const orderByAlias = sort === 'time' ? 'ORDER BY i.createTime DESC' : 'ORDER BY i.isFavorite DESC, i.createTime DESC'
 
   if (encryption.isEnabled()) {
     const rows = db.prepare('SELECT * FROM items ORDER BY isFavorite DESC, createTime DESC LIMIT ?').all(Math.max(limit, 10000))
-    const decrypted = rows.map(decryptRow)
+    let decrypted = rows.map(decryptRow)
+    if (entitySet) decrypted = decrypted.filter(i => entitySet.has(i.id))
     if (trimmed) {
       const q = trimmed.toLowerCase()
-      return decrypted.filter(i =>
+      decrypted = decrypted.filter(i =>
         (i.content || '').toLowerCase().includes(q) ||
         (i.ocrText || '').toLowerCase().includes(q)
-      ).slice(0, limit)
+      )
     }
-    return decrypted
+    if (sort === 'time') decrypted = decrypted.slice().sort((a, b) => b.createTime - a.createTime)
+    return attachEntities(decrypted.slice(0, limit), withEntities)
   }
 
   const extra = []
@@ -324,6 +407,8 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
   if (favorite) { extra.push('i.isFavorite = 1') }
   const extraSql = extra.length ? ' AND ' + extra.join(' AND ') : ''
   const extraSqlNoAlias = extra.length ? ' AND ' + extra.join(' AND ').replace(/\bi\./g, '') : ''
+  const entityClause = entitySet ? entityInClause(entitySet, 'i') : null
+  const entityClauseNoAlias = entitySet ? entityInClause(entitySet) : null
 
   if (trimmed) {
     const hasCJK = /[\u4e00-\u9fff]/.test(trimmed)
@@ -334,10 +419,11 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
           SELECT i.* FROM items i
           WHERE i.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)
           ${extraSql}
-          ORDER BY i.isFavorite DESC, i.createTime DESC
+          ${entityClause ? entityClause.clause : ''}
+          ${orderByAlias}
           LIMIT ?
-        `).all(matchQuery, ...extraParams, limit)
-        return rows.map(decryptRow)
+        `).all(matchQuery, ...extraParams, ...(entityClause ? entityClause.params : []), limit)
+        return attachEntities(rows.map(decryptRow), withEntities)
       } catch (e) {
         console.warn('[DBService] FTS search failed, fallback LIKE:', e.message)
       }
@@ -349,18 +435,24 @@ function getAll({ search = '', limit = 200, type = null, favorite = null } = {})
       SELECT * FROM items
       WHERE content LIKE ? ESCAPE '\\' OR ocrText LIKE ? ESCAPE '\\'
       ${extraSqlNoAlias}
-      ORDER BY isFavorite DESC, createTime DESC
+      ${entityClauseNoAlias ? entityClauseNoAlias.clause : ''}
+      ${orderBy}
       LIMIT ?
-    `).all(q, q, ...extraParams, limit).map(decryptRow)
+    `).all(q, q, ...extraParams, ...(entityClauseNoAlias ? entityClauseNoAlias.params : []), limit).map(decryptRow)
+    return attachEntities(rows, withEntities)
   }
 
   let sql = 'SELECT * FROM items'
-  if (extra.length) {
-    const where = extra.join(' AND ').replace(/\bi\./g, '')
+  const whereParts = []
+  if (extra.length) whereParts.push(extra.join(' AND ').replace(/\bi\./g, ''))
+  if (entityClauseNoAlias) whereParts.push(entityClauseNoAlias.clause.replace(/^ AND /, ''))
+  if (whereParts.length) {
+    const where = whereParts.join(' AND ')
     sql += ' WHERE ' + where
   }
-  sql += ' ORDER BY isFavorite DESC, createTime DESC LIMIT ?'
-  return db.prepare(sql).all(...extraParams, limit).map(decryptRow)
+  sql += ' ' + orderBy + ' LIMIT ?'
+  const rows = db.prepare(sql).all(...extraParams, ...(entityClauseNoAlias ? entityClauseNoAlias.params : []), limit).map(decryptRow)
+  return attachEntities(rows, withEntities)
 }
 
 function toggleFavorite(id) {

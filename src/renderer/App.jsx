@@ -7,8 +7,12 @@ import PetSettings from './components/PetSettings'
 import NotesPanel from './components/NotesPanel'
 import CommandPalette from './components/CommandPalette'
 import pasteUtils from '../shared/paste-utils.cjs'
+import itemsMerge from '../shared/items-merge.cjs'
+import queryUtils from '../shared/entity-query.cjs'
 
 const { numberedIndex, nextIndex, plainTextPayload } = pasteUtils
+const { mergeItemIntoList } = itemsMerge
+const { parseEntityQuery, filterToSearchText, stripFilterToken } = queryUtils
 
 const ICONS = { Moon, Code, Link, Flame, TrendingUp, Smile }
 
@@ -96,7 +100,15 @@ export default function App() {
 
   const loadItems = useCallback(async (query = '', filter = 'all') => {
     try {
-      const opts = { search: query, limit: 5000 }
+      const parsed = parseEntityQuery(query)
+      const opts = {
+        search: parsed.plain.join(' '),
+        limit: 5000,
+        entityFilters: parsed.entityFilters,
+        withEntities: true
+      }
+      const isModelHistory = parsed.entityFilters.length === 1 && parsed.entityFilters[0].type === 'model'
+      if (isModelHistory) opts.sort = 'time'
       if (filter === 'fav') opts.favorite = true
       else if (filter === 'text' || filter === 'image') opts.type = filter
       const data = await window.api.getAll(opts)
@@ -135,17 +147,7 @@ export default function App() {
       } else if (item._ocrUpdated) {
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, ocrText: item.ocrText } : i))
       } else if (item.id) {
-        setItems(prev => {
-          const exists = prev.findIndex(i => i.id === item.id)
-          if (exists >= 0) { const next = [...prev]; next[exists] = item; return next }
-          // 新项目插入后重新排序：收藏优先，然后按时间
-          const next = [item, ...prev].slice(0, 200)
-          next.sort((a, b) => {
-            if (a.isFavorite !== b.isFavorite) return b.isFavorite - a.isFavorite
-            return b.createTime - a.createTime
-          })
-          return next
-        })
+        setItems(prev => mergeItemIntoList(prev, item))
       } else {
         loadItems(searchRef2.current, filterRef2.current)
       }
@@ -194,6 +196,16 @@ export default function App() {
       showToast(`已删除 ${ids.length} 条记录`)
     } catch (e) { console.error('Batch delete failed:', e) }
   }, [selectedIds, showToast])
+
+  const handleEntityClick = useCallback((type, value) => {
+    setSearch(filterToSearchText({ type, value }))
+  }, [])
+
+  const handleRemoveEntityFilter = useCallback((filter) => {
+    setSearch(prev => stripFilterToken(prev, filter))
+  }, [])
+
+  const parsedQuery = useMemo(() => parseEntityQuery(search), [search])
 
   const filteredItems = useMemo(() => {
     if (filter === 'all') return items
@@ -397,7 +409,14 @@ export default function App() {
             )
           })()}
 
-          <SearchBar ref={searchRef} value={search} onChange={setSearch} count={filter === 'notes' ? 0 : filteredItems.length} />
+          <SearchBar
+            ref={searchRef}
+            value={search}
+            onChange={setSearch}
+            count={filter === 'notes' ? 0 : filteredItems.length}
+            entityFilters={parsedQuery.entityFilters}
+            onRemoveFilter={handleRemoveEntityFilter}
+          />
           <div className="filter-bar">
             <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => { setFilter('all'); setSelectedIds(new Set()) }}>全部</button>
             <button className={`filter-btn ${filter === 'text' ? 'active' : ''}`} onClick={() => { setFilter('text'); setSelectedIds(new Set()) }}>文字</button>
@@ -415,6 +434,7 @@ export default function App() {
               onSelect={handleSelect}
               onCopy={handleCopy} onDelete={handleDelete} onToggleFavorite={handleToggleFavorite}
               onEdit={handleEdit} onEditContent={handleEditContent} onOpenEdit={openEditModal} loading={loading} searchQuery={search}
+              onEntityClick={handleEntityClick}
             />
           )}
 
