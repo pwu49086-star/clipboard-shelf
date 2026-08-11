@@ -47,6 +47,22 @@ const MIGRATIONS = [
       'CREATE INDEX IF NOT EXISTS idx_entities_item ON entities(item_id)',
       'CREATE INDEX IF NOT EXISTS idx_entities_type_value ON entities(type, value)'
     ]
+  },
+  {
+    version: 3,
+    sql: [
+      `CREATE TABLE IF NOT EXISTS worksites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        note TEXT DEFAULT '',
+        archived INTEGER DEFAULT 0,
+        createTime INTEGER NOT NULL,
+        updateTime INTEGER NOT NULL
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_worksites_update ON worksites(updateTime DESC)',
+      'ALTER TABLE items ADD COLUMN worksiteId INTEGER',
+      'CREATE INDEX IF NOT EXISTS idx_items_worksite ON items(worksiteId)'
+    ]
   }
 ]
 
@@ -383,6 +399,7 @@ function getAll({
   favorite = null,
   entityFilters = [],
   ids = null,
+  worksiteId = null,
   withEntities = false,
   sort = 'default'
 } = {}) {
@@ -393,6 +410,7 @@ function getAll({
     ? ids.map(Number).filter(Number.isInteger)
     : null
   if (idArray !== null && idArray.length === 0) return []
+  const wsId = Number.isInteger(worksiteId) && worksiteId > 0 ? worksiteId : null
 
   // 合并 ids 与实体过滤为最终 id 集合（交集）
   let finalSet = entitySet
@@ -409,6 +427,7 @@ function getAll({
     const rows = db.prepare('SELECT * FROM items ORDER BY isFavorite DESC, createTime DESC LIMIT ?').all(Math.max(limit, 10000))
     let decrypted = rows.map(decryptRow)
     if (finalSet) decrypted = decrypted.filter(i => finalSet.has(i.id))
+    if (wsId) decrypted = decrypted.filter(i => i.worksiteId === wsId)
     if (trimmed) {
       const q = trimmed.toLowerCase()
       decrypted = decrypted.filter(i =>
@@ -424,6 +443,7 @@ function getAll({
   const extraParams = []
   if (type) { extra.push('i.type = ?'); extraParams.push(type) }
   if (favorite) { extra.push('i.isFavorite = 1') }
+  if (wsId) { extra.push('i.worksiteId = ?'); extraParams.push(wsId) }
   const extraSql = extra.length ? ' AND ' + extra.join(' AND ') : ''
   const extraSqlNoAlias = extra.length ? ' AND ' + extra.join(' AND ').replace(/\bi\./g, '') : ''
   const idClause = finalSet ? idInClauseList(finalSet, 'i') : null
@@ -450,15 +470,15 @@ function getAll({
 
     const escaped = search.replace(/[\\%_]/g, m => '\\' + m)
     const q = `%${escaped}%`
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT * FROM items
-      WHERE content LIKE ? ESCAPE '\\' OR ocrText LIKE ? ESCAPE '\\'
+      WHERE (content LIKE ? ESCAPE '\\' OR ocrText LIKE ? ESCAPE '\\')
       ${extraSqlNoAlias}
       ${idClauseNoAlias ? idClauseNoAlias.clause : ''}
       ${orderBy}
       LIMIT ?
-    `).all(q, q, ...extraParams, ...(idClauseNoAlias ? idClauseNoAlias.params : []), limit).map(decryptRow)
-    return attachEntities(rows, withEntities)
+    `).all(q, q, ...extraParams, ...(idClauseNoAlias ? idClauseNoAlias.params : []), limit)
+    return attachEntities(rows.map(decryptRow), withEntities)
   }
 
   let sql = 'SELECT * FROM items'
@@ -496,8 +516,8 @@ function updateOcrText(id, ocrText) {
 
 function clearNonFavorites() {
   if (!db) return
-  const rows = db.prepare('SELECT id, filePath, thumbPath FROM items WHERE isFavorite = 0').all()
-  db.prepare('DELETE FROM items WHERE isFavorite = 0').run()
+  const rows = db.prepare('SELECT id, filePath, thumbPath FROM items WHERE isFavorite = 0 AND worksiteId IS NULL').all()
+  db.prepare('DELETE FROM items WHERE isFavorite = 0 AND worksiteId IS NULL').run()
 
   const ids = rows.map(r => r.id)
   deleteEntitiesForIds(ids)
@@ -545,7 +565,7 @@ function cleanByPolicy(policy = {}) {
     const cutoff = now - maxDays * 24 * 60 * 60 * 1000
     for (const r of db.prepare(`
       SELECT id, filePath, thumbPath FROM items
-      WHERE isFavorite = 0 AND createTime < ?
+      WHERE isFavorite = 0 AND worksiteId IS NULL AND createTime < ?
     `).all(cutoff)) {
       candidates.set(r.id, r)
     }
@@ -558,7 +578,7 @@ function cleanByPolicy(policy = {}) {
     if (toDelete > 0) {
       for (const r of db.prepare(`
         SELECT id, filePath, thumbPath FROM items
-        WHERE isFavorite = 0
+        WHERE isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
       `).all(toDelete)) {
@@ -576,7 +596,7 @@ function cleanByPolicy(policy = {}) {
     if (toDelete > 0) {
       for (const r of db.prepare(`
         SELECT id, filePath, thumbPath FROM items
-        WHERE type = 'image' AND isFavorite = 0
+        WHERE type = 'image' AND isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
       `).all(toDelete)) {
@@ -704,6 +724,123 @@ function markNoteReminded(id) {
   db.prepare('UPDATE notes SET reminded = 1 WHERE id = ?').run(id)
 }
 
+// ====== Worksite CRUD（v1.7.0）======
+function getWorksite(id) {
+  if (!db || !Number.isInteger(id)) return null
+  const row = db.prepare(`
+    SELECT w.*, COUNT(i.id) AS itemCount, MAX(i.createTime) AS lastItemTime
+    FROM worksites w LEFT JOIN items i ON i.worksiteId = w.id
+    WHERE w.id = ? GROUP BY w.id
+  `).get(id)
+  if (!row) return null
+  return {
+    ...row,
+    title: encryption.decrypt(row.title),
+    note: encryption.decrypt(row.note),
+    itemCount: Number(row.itemCount || 0)
+  }
+}
+
+function createWorksite({ title, note } = {}) {
+  if (!db) return null
+  const t = String(title || '').trim()
+  if (!t) return null
+  const now = Date.now()
+  const encTitle = encryption.isEnabled() ? encryption.encrypt(t) : t
+  const encNote = encryption.isEnabled() ? encryption.encrypt(String(note || '')) : String(note || '')
+  const info = db.prepare(`
+    INSERT INTO worksites (title, note, archived, createTime, updateTime)
+    VALUES (?, ?, 0, ?, ?)
+  `).run(encTitle, encNote, now, now)
+  return getWorksite(Number(info.lastInsertRowid))
+}
+
+function listWorksites() {
+  if (!db) return []
+  const rows = db.prepare(`
+    SELECT w.*, COUNT(i.id) AS itemCount, MAX(i.createTime) AS lastItemTime
+    FROM worksites w LEFT JOIN items i ON i.worksiteId = w.id
+    GROUP BY w.id
+    ORDER BY w.archived ASC, w.updateTime DESC
+  `).all()
+  return rows.map(r => ({
+    ...r,
+    title: encryption.decrypt(r.title),
+    note: encryption.decrypt(r.note),
+    itemCount: Number(r.itemCount || 0)
+  }))
+}
+
+function updateWorksite(id, changes = {}) {
+  if (!db || !Number.isInteger(id)) return null
+  const sets = []
+  const vals = []
+  if (changes.title !== undefined) {
+    const t = String(changes.title).trim()
+    if (!t) return null
+    sets.push('title = ?')
+    vals.push(encryption.isEnabled() ? encryption.encrypt(t) : t)
+  }
+  if (changes.note !== undefined) {
+    sets.push('note = ?')
+    vals.push(encryption.isEnabled() ? encryption.encrypt(String(changes.note)) : String(changes.note))
+  }
+  if (changes.archived !== undefined) {
+    sets.push('archived = ?')
+    vals.push(changes.archived ? 1 : 0)
+  }
+  if (sets.length === 0) return getWorksite(id)
+  sets.push('updateTime = ?')
+  vals.push(Date.now(), id)
+  db.prepare(`UPDATE worksites SET ${sets.join(', ')} WHERE id = ?`).run(...vals)
+  return getWorksite(id)
+}
+
+function deleteWorksite(id) {
+  if (!db || !Number.isInteger(id)) return false
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE items SET worksiteId = NULL WHERE worksiteId = ?').run(id)
+    const info = db.prepare('DELETE FROM worksites WHERE id = ?').run(id)
+    return info.changes > 0
+  })
+  return tx()
+}
+
+function touchWorksites(ids) {
+  const uniq = [...new Set((ids || []).filter(Number.isInteger))]
+  if (uniq.length === 0) return
+  for (let i = 0; i < uniq.length; i += 500) {
+    const chunk = uniq.slice(i, i + 500)
+    db.prepare(`UPDATE worksites SET updateTime = ? WHERE id IN (${chunk.map(() => '?').join(',')})`)
+      .run(Date.now(), ...chunk)
+  }
+}
+
+function setItemsWorksite(ids, worksiteId) {
+  if (!db || !Array.isArray(ids) || ids.length === 0) return { ok: false, error: '空选择' }
+  const itemIds = ids.map(Number).filter(Number.isInteger)
+  if (itemIds.length === 0) return { ok: false, error: '无效记录' }
+  const target = Number.isInteger(worksiteId) && worksiteId > 0 ? worksiteId : null
+  if (target !== null) {
+    const exists = db.prepare('SELECT id FROM worksites WHERE id = ?').get(target)
+    if (!exists) return { ok: false, error: '现场不存在' }
+  }
+  const tx = db.transaction(() => {
+    const touched = new Set()
+    for (let i = 0; i < itemIds.length; i += 500) {
+      const chunk = itemIds.slice(i, i + 500)
+      const ph = chunk.map(() => '?').join(',')
+      const oldRows = db.prepare(`SELECT DISTINCT worksiteId FROM items WHERE id IN (${ph}) AND worksiteId IS NOT NULL`).all(...chunk)
+      for (const r of oldRows) if (Number.isInteger(r.worksiteId)) touched.add(r.worksiteId)
+      if (target !== null) touched.add(target)
+      db.prepare(`UPDATE items SET worksiteId = ? WHERE id IN (${ph})`).run(target, ...chunk)
+    }
+    touchWorksites([...touched])
+  })
+  tx()
+  return { ok: true, updated: itemIds.length }
+}
+
 // ====== Close ======
 function close() {
   if (db) {
@@ -758,6 +895,8 @@ module.exports = {
   insertEntities, markEntityState, getEntitiesByItem, deleteEntitiesForIds,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin,
   getDueReminders, markNoteReminded,
+  getWorksite, createWorksite, listWorksites, updateWorksite, deleteWorksite,
+  setItemsWorksite,
   clearFts, reEncryptAll, decryptAllAndRebuildFts,
   MIGRATIONS
 }

@@ -60,13 +60,16 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('v1 → v2 migration: entities table + entityState column, legacy data intact', () => {
+test('v1 → v3 migration: entities/worksites tables + new columns, legacy data intact', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 2)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
   const entCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='entities'").get().c
   assert.strictEqual(entCount, 1)
+  const wsCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='worksites'").get().c
+  assert.strictEqual(wsCount, 1)
   const cols = raw.prepare('PRAGMA table_info(items)').all().map(c => c.name)
   assert.ok(cols.includes('entityState'))
+  assert.ok(cols.includes('worksiteId'))
   raw.close()
 
   const all = db.getAll({ limit: 10 })

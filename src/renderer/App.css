@@ -576,6 +576,151 @@ mark.hl {
   box-shadow: 0 2px 8px var(--color-primary-light);
 }
 .btn-save:hover { opacity: .9; transform: translateY(-1px); }
+
+/* ====== Worksite (v1.7.0) ====== */
+.worksites-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.worksites-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.worksites-msg {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.worksites-empty {
+  color: var(--color-text-muted);
+  text-align: center;
+  padding: 24px 0;
+  font-size: 13px;
+}
+.worksite-create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.ws-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 13px;
+}
+.worksite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--color-primary-light);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.worksite-row:hover {
+  border-color: var(--color-accent);
+}
+.worksite-row.archived {
+  opacity: .62;
+}
+.worksite-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.worksite-title-text {
+  font-weight: 600;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.worksite-count,
+.worksite-note,
+.worksite-time {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.worksite-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.worksite-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: var(--color-primary-light);
+  border-bottom: 1px solid var(--color-border);
+}
+.worksite-back {
+  border: none;
+  background: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+}
+.worksite-back:hover {
+  text-decoration: underline;
+}
+.ws-picker-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ws-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-primary-light);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+.ws-picker-row:hover {
+  border-color: var(--color-accent);
+}
+.ws-picker-count {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.ws-picker-create {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ws-picker-error {
+  color: #d33;
+  font-size: 12px;
+  margin-top: 6px;
+}
 .btn-cancel { background: var(--color-bg); }
 
 /* ====== Settings ====== */

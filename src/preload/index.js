@@ -115,6 +115,13 @@ contextBridge.exposeInMainWorld('api', {
   notesDelete: (id) => ipcRenderer.invoke('notes:delete', id),
   notesTogglePin: (id) => ipcRenderer.invoke('notes:togglePin', id),
 
+  // Worksite（v1.7.0）
+  worksitesList: () => ipcRenderer.invoke('worksites:list'),
+  worksitesCreate: (payload) => ipcRenderer.invoke('worksites:create', payload),
+  worksitesUpdate: (id, changes) => ipcRenderer.invoke('worksites:update', id, changes),
+  worksitesDelete: (id) => ipcRenderer.invoke('worksites:delete', id),
+  setItemsWorksite: (ids, worksiteId) => ipcRenderer.invoke('items:setWorksite', ids, worksiteId),
+
   // 配置导入导出
   configExport: () => ipcRenderer.invoke('config:export'),
   configImport: () => ipcRenderer.invoke('config:import'),

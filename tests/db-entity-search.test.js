@@ -90,6 +90,17 @@ test('entity filter AND plain keyword', () => {
   assert.strictEqual(none.length, 0)
 })
 
+test('CJK search still attaches entities (P2 regression)', () => {
+  const rows = db.getAll({ limit: 100, search: '大金', withEntities: true })
+  assert.ok(rows.length >= 1, 'CJK search should find 大金 records')
+  const r = rows.find(x => (x.content || '').includes('RXYQ16AYM'))
+  assert.ok(r, 'should find the seeded 大金 record')
+  assert.ok(
+    Array.isArray(r.entities) && r.entities.length >= 4,
+    'entities must be attached on CJK search path'
+  )
+})
+
 test('empty entity filter result short-circuits', () => {
   const rows = db.getAll({ limit: 100, search: 'RXYQ16AYM', entityFilters: [{ type: 'brand', value: '不存在' }] })
   assert.strictEqual(rows.length, 0)

@@ -387,6 +387,13 @@ function setup(mainWindow) {
   ipcMain.handle('notes:delete', (e, id) => { db.deleteNote(id); return true })
   ipcMain.handle('notes:togglePin', (e, id) => { db.toggleNotePin(id); return true })
 
+  // Worksite（v1.7.0）
+  ipcMain.handle('worksites:list', () => db.listWorksites())
+  ipcMain.handle('worksites:create', (e, payload) => db.createWorksite(payload || {}))
+  ipcMain.handle('worksites:update', (e, id, changes) => db.updateWorksite(id, changes || {}))
+  ipcMain.handle('worksites:delete', (e, id) => db.deleteWorksite(id))
+  ipcMain.handle('items:setWorksite', (e, ids, worksiteId) => db.setItemsWorksite(ids, worksiteId))
+
   // 导入图片
   ipcMain.handle('import:image', async (event, base64, filename) => {
     handleImportImage(base64, filename)

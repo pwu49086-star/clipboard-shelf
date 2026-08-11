@@ -1,5 +1,34 @@
 # Changelog
 
+## v1.7.0 (2026-08-11) — Worksite（工作现场）
+
+### 核心能力
+
+- 现场（Worksite）：把一次维修任务的多段剪贴板记录归入一个命名集合。
+- 过滤栏新增「现场」：现场列表（标题/备注/记录数/最后记录时间/归档标记）+ 新建/重命名/归档/删除。
+- 多选批量栏新增「加入现场」：选择已有现场或创建后立即关联选中记录；现场视图内可「移出现场」。
+- 现场视图完全复用现有 ItemList / 实体 Chip / 多选 / 搜索 / 复制全部 / Markdown / 导出 / 工单草稿，不重新实现。
+- 现场内搜索/实体过滤/类型/收藏与 worksiteId 全部 AND 组合，不越出现场边界。
+- 删除现场只解除记录关联，不删除剪贴板记录；归档不解除关联、不取消 retention 保护，归档现场仍可查看/搜索/输出。
+- 任何加入/移出记录都会更新现场 updateTime。
+- retention 保护：现场内记录等同收藏，`cleanByPolicy` / `clearNonFavorites` 不自动清理；移出现场后恢复正常清理。
+- 数据库 migration v3：`worksites` 表 + `items.worksiteId`（可空）+ 索引；幂等、旧数据无损、空库直达 v3。
+- 修复 P2：中文关键词搜索时实体 Chip 不显示（LIKE 路径补挂实体）。
+- 隐私：现场标题/备注与便签同语义（启用加密时加密存储）；sensitivity=2 / metadataOnly 输出门禁不变。
+
+### 技术说明
+
+- 无新第三方依赖；IPC 新增 5 个（worksites:list/create/update/delete + items:setWorksite）。
+- `getAll` 新增可选 `worksiteId`，默认行为完全不变。
+- 测试：167/167 通过（新增 migration v3 / worksite CRUD / 批量分块 / retention 保护 / 隐私 / 加密测试）。
+
+### 已知限制
+
+- v1.7.0 为单归属：一条记录同一时间只属于一个现场（多归属留后续）。
+- 现场不自动识别/拆分“哪个现场属于哪次任务”，由用户主动归并。
+
+---
+
 ## v1.6.1 (2026-08-11) — Collection & Output
 
 ### 核心能力

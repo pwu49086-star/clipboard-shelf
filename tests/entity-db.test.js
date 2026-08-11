@@ -23,13 +23,16 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('fresh database migrates to v2 with entities table and entityState column', () => {
+test('fresh database migrates to v3 with entities/worksites and new columns', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 2)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
   const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entities'").all()
   assert.strictEqual(tables.length, 1)
+  const wsTables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='worksites'").all()
+  assert.strictEqual(wsTables.length, 1)
   const cols = raw.prepare('PRAGMA table_info(items)').all().map(c => c.name)
   assert.ok(cols.includes('entityState'))
+  assert.ok(cols.includes('worksiteId'))
   raw.close()
 })
 
@@ -138,11 +141,11 @@ test('deleting items cascades entity rows', () => {
   assert.strictEqual(db.getEntitiesByItem(item.id).length, 0)
 })
 
-test('re-init after close is idempotent and stays v2', async () => {
+test('re-init after close is idempotent and stays v3', async () => {
   db.close()
   await db.init()
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 2)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
   const entCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='entities'").get().c
   assert.strictEqual(entCount, 1)
   raw.close()

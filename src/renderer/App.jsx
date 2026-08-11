@@ -5,6 +5,8 @@ import ItemList from './components/ItemList'
 import SettingsPanel from './components/SettingsPanel'
 import PetSettings from './components/PetSettings'
 import NotesPanel from './components/NotesPanel'
+import WorksitesPanel from './components/WorksitesPanel'
+import WorksitePicker from './components/WorksitePicker'
 import CommandPalette from './components/CommandPalette'
 import pasteUtils from '../shared/paste-utils.cjs'
 import itemsMerge from '../shared/items-merge.cjs'
@@ -30,6 +32,8 @@ export default function App() {
   const [shooting, setShooting] = useState(false)
   const [panel, setPanel] = useState('main')
   const [filter, setFilter] = useState('all')
+  const [activeWorksite, setActiveWorksite] = useState(null)
+  const [worksitePickerOpen, setWorksitePickerOpen] = useState(false)
   const [editModal, setEditModal] = useState(null)
   const [toast, setToast] = useState(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
@@ -55,6 +59,8 @@ export default function App() {
   searchRef2.current = search
   const filterRef2 = useRef(filter)
   filterRef2.current = filter
+  const activeWorksiteRef = useRef(activeWorksite)
+  activeWorksiteRef.current = activeWorksite
   const handleCopyRef = useRef(null)
   const handleDeleteRef = useRef(null)
 
@@ -114,15 +120,19 @@ export default function App() {
       if (isModelHistory) opts.sort = 'time'
       if (filter === 'fav') opts.favorite = true
       else if (filter === 'text' || filter === 'image') opts.type = filter
+      if (activeWorksite && filter === 'worksites') {
+        opts.worksiteId = activeWorksite.id
+        opts.sort = 'time'
+      }
       const data = await window.api.getAll(opts)
       setItems(data)
     } catch (e) { console.error('Load failed:', e) }
     finally { setLoading(false) }
-  }, [])
+  }, [activeWorksite])
 
   useEffect(() => {
     if (encStatus.enabled && !encStatus.unlocked) return
-    loadItems()
+    loadItems(searchRef2.current, filterRef2.current)
   }, [encStatus, loadItems])
 
   useEffect(() => {
@@ -137,10 +147,13 @@ export default function App() {
   useEffect(() => {
     clearTimeout(debounceRef.current)
     debounceRef.current = setTimeout(() => {
-      if (filter !== 'notes' && !(encStatus.enabled && !encStatus.unlocked)) loadItems(search, filter)
+      if (filter === 'notes') return
+      if (filter === 'worksites' && !activeWorksite) return
+      if (encStatus.enabled && !encStatus.unlocked) return
+      loadItems(search, filter)
     }, 250)
     return () => clearTimeout(debounceRef.current)
-  }, [search, loadItems, filter, encStatus])
+  }, [search, loadItems, filter, encStatus, activeWorksite])
 
   useEffect(() => {
     const offUpdate = window.api.onUpdate((item) => {
@@ -150,7 +163,11 @@ export default function App() {
       } else if (item._ocrUpdated) {
         setItems(prev => prev.map(i => i.id === item.id ? { ...i, ocrText: item.ocrText } : i))
       } else if (item.id) {
-        setItems(prev => mergeItemIntoList(prev, item))
+        setItems(prev => {
+          const ws = activeWorksiteRef.current
+          if (ws && filterRef2.current === 'worksites' && item.worksiteId !== ws.id) return prev
+          return mergeItemIntoList(prev, item)
+        })
       } else {
         loadItems(searchRef2.current, filterRef2.current)
       }
@@ -269,11 +286,60 @@ export default function App() {
     setDraftModal({ content: out.text, skipped })
   }, [selectedIds, fetchSelectedItems])
 
+  const handleOpenWorksite = useCallback((ws) => {
+    setActiveWorksite(ws)
+    setFilter('worksites')
+    setSelectedIds(new Set())
+    setMultiMode(false)
+  }, [])
+
+  const refreshActiveWorksite = useCallback(async () => {
+    const ws = activeWorksiteRef.current
+    if (!ws) return
+    try {
+      const fresh = (await window.api.worksitesList()).find(w => w.id === ws.id)
+      if (fresh) setActiveWorksite(fresh)
+    } catch {}
+  }, [])
+
+  const handleJoinWorksite = useCallback(async (ws) => {
+    if (!selectedIds.size) { showToast('请先选择记录'); return }
+    const r = await window.api.setItemsWorksite([...selectedIds], ws.id)
+    if (!r || !r.ok) { showToast((r && r.error) || '加入失败'); return }
+    setSelectedIds(new Set())
+    setWorksitePickerOpen(false)
+    showToast(`已加入现场「${ws.title}」（${r.updated} 条）`)
+    refreshActiveWorksite()
+  }, [selectedIds, showToast, refreshActiveWorksite])
+
+  const handleQuickCreateWorksite = useCallback(async (title, note) => {
+    const ws = await window.api.worksitesCreate({ title, note })
+    if (!ws) return { ok: false, error: '现场名称不能为空' }
+    const r = await window.api.setItemsWorksite([...selectedIds], ws.id)
+    if (!r || !r.ok) return { ok: false, error: (r && r.error) || '加入失败' }
+    setSelectedIds(new Set())
+    showToast(`已创建并加入现场「${ws.title}」（${r.updated} 条）`)
+    refreshActiveWorksite()
+    return { ok: true }
+  }, [selectedIds, showToast, refreshActiveWorksite])
+
+  const handleRemoveFromWorksite = useCallback(async () => {
+    const ws = activeWorksiteRef.current
+    if (!ws || !selectedIds.size) { showToast('请先选择记录'); return }
+    const r = await window.api.setItemsWorksite([...selectedIds], null)
+    if (!r || !r.ok) { showToast((r && r.error) || '移出失败'); return }
+    setSelectedIds(new Set())
+    showToast(`已移出现场（${r.updated} 条）`)
+    loadItems(searchRef2.current, 'worksites')
+    refreshActiveWorksite()
+  }, [selectedIds, loadItems, showToast, refreshActiveWorksite])
+
   const parsedQuery = useMemo(() => parseEntityQuery(search), [search])
 
   const filteredItems = useMemo(() => {
     if (filter === 'all') return items
     if (filter === 'fav') return items.filter(i => i.isFavorite === 1)
+    if (filter === 'notes' || filter === 'worksites') return items
     return items.filter(i => i.type === filter)
   }, [items, filter])
   const filteredItemsRef = useRef(filteredItems)
@@ -481,16 +547,29 @@ export default function App() {
             entityFilters={parsedQuery.entityFilters}
             onRemoveFilter={handleRemoveEntityFilter}
           />
-          <div className="filter-bar">
-            <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => { setFilter('all'); setSelectedIds(new Set()) }}>全部</button>
-            <button className={`filter-btn ${filter === 'text' ? 'active' : ''}`} onClick={() => { setFilter('text'); setSelectedIds(new Set()) }}>文字</button>
-            <button className={`filter-btn ${filter === 'image' ? 'active' : ''}`} onClick={() => { setFilter('image'); setSelectedIds(new Set()) }}>图片</button>
-            <button className={`filter-btn ${filter === 'fav' ? 'active' : ''}`} onClick={() => { setFilter('fav'); setSelectedIds(new Set()) }}>收藏</button>
-            <button className={`filter-btn ${filter === 'notes' ? 'active' : ''}`} onClick={() => { setFilter('notes'); setSelectedIds(new Set()) }}>便签</button>
-          </div>
+          {!(filter === 'worksites' && activeWorksite) && (
+            <div className="filter-bar">
+              <button className={`filter-btn ${filter === 'all' ? 'active' : ''}`} onClick={() => { setFilter('all'); setSelectedIds(new Set()) }}>全部</button>
+              <button className={`filter-btn ${filter === 'text' ? 'active' : ''}`} onClick={() => { setFilter('text'); setSelectedIds(new Set()) }}>文字</button>
+              <button className={`filter-btn ${filter === 'image' ? 'active' : ''}`} onClick={() => { setFilter('image'); setSelectedIds(new Set()) }}>图片</button>
+              <button className={`filter-btn ${filter === 'fav' ? 'active' : ''}`} onClick={() => { setFilter('fav'); setSelectedIds(new Set()) }}>收藏</button>
+              <button className={`filter-btn ${filter === 'worksites' ? 'active' : ''}`} onClick={() => { setFilter('worksites'); setActiveWorksite(null); setSelectedIds(new Set()) }}>现场</button>
+              <button className={`filter-btn ${filter === 'notes' ? 'active' : ''}`} onClick={() => { setFilter('notes'); setSelectedIds(new Set()) }}>便签</button>
+            </div>
+          )}
+
+          {filter === 'worksites' && activeWorksite && (
+            <div className="worksite-header">
+              <button className="worksite-back" onClick={() => setActiveWorksite(null)}>← 现场列表</button>
+              <span className="worksite-title-text">{activeWorksite.title}{activeWorksite.archived ? '（已归档）' : ''}</span>
+              <span className="worksite-count">{activeWorksite.itemCount} 条记录</span>
+            </div>
+          )}
 
           {filter === 'notes' ? (
             <NotesPanel embedded searchQuery={search} />
+          ) : filter === 'worksites' && !activeWorksite ? (
+            <WorksitesPanel onOpen={handleOpenWorksite} />
           ) : (
             <ItemList
               items={filteredItems} selectedId={selectedId} selectedIds={selectedIds} multiMode={multiMode}
@@ -511,6 +590,11 @@ export default function App() {
               <button className="batch-btn" onClick={handleCopyMarkdown} disabled={selectedIds.size === 0}>Markdown</button>
               <button className="batch-btn" onClick={handleExportMarkdown} disabled={selectedIds.size === 0}>导出</button>
               <button className="batch-btn" onClick={handleWorkOrderDraft} disabled={selectedIds.size === 0}>工单草稿</button>
+              {filter === 'worksites' && activeWorksite ? (
+                <button className="batch-btn" onClick={handleRemoveFromWorksite} disabled={selectedIds.size === 0}>移出现场</button>
+              ) : (
+                <button className="batch-btn" onClick={() => setWorksitePickerOpen(true)} disabled={selectedIds.size === 0}>加入现场</button>
+              )}
               <button className="batch-btn batch-btn-danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0}>删除选中</button>
             </div>
           )}
@@ -640,6 +724,14 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {worksitePickerOpen && (
+        <WorksitePicker
+          onClose={() => setWorksitePickerOpen(false)}
+          onPick={handleJoinWorksite}
+          onQuickCreate={handleQuickCreateWorksite}
+        />
       )}
     </div>
   )
