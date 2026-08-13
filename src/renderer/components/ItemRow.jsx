@@ -1,4 +1,5 @@
 import { memo, useCallback, useState, useRef, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { FileText, Image, Copy, Star, Trash2, AlertTriangle, ClipboardCopy, Pin } from 'lucide-react'
 
 function formatTime(ts) {
@@ -292,7 +293,7 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
         </button>
       </div>
 
-      {ctx && (
+      {ctx && createPortal(
         <div className="ctx-menu" style={{ left: ctx.x, top: ctx.y }} onClick={e => e.stopPropagation()}>
           {!item.metadataOnly && <button onClick={() => { onCopy(item); setCtx(null) }}>复制</button>}
           <button onClick={() => { onToggleFavorite(item.id); setCtx(null) }}>{item.isFavorite ? '取消收藏' : '收藏'}</button>
@@ -300,7 +301,8 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
           {isImage && item.filePath && <button onClick={() => { window.api.showInExplorer(item.filePath); setCtx(null) }}>在文件夹中显示</button>}
           {!isImage && !item.metadataOnly && <button onClick={() => { onEdit(item); setCtx(null) }}>编辑</button>}
           <button className="ctx-danger" onClick={() => { onDelete(item.id); setCtx(null) }}>删除</button>
-        </div>
+        </div>,
+        document.body
       )}
       
     </div>
