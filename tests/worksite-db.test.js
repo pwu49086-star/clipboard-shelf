@@ -30,9 +30,9 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('fresh empty database migrates to v3', () => {
+test('fresh empty database migrates to v4', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
   raw.close()
   assert.deepStrictEqual(db.listWorksites(), [])
 })

@@ -213,7 +213,9 @@ const ItemRow = memo(function ItemRow({ item, isSelected, multiMode, onSelect, o
         {isImage && item.thumbPath && (
           <img
             className="item-thumb"
-            src={`shelf-file://thumb/${item.thumbPath.replace(/\\/g, '/').split('/').pop()}`}
+            src={item.annotatedPath
+              ? `shelf-file://annotated/${item.annotatedPath.replace(/\\/g, '/').split('/').pop()}`
+              : `shelf-file://thumb/${item.thumbPath.replace(/\\/g, '/').split('/').pop()}`}
             alt=""
             draggable={false}
             onError={(e) => { e.target.style.display='none' }}

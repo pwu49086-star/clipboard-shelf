@@ -8,9 +8,21 @@
 const { app, BrowserWindow, globalShortcut, screen, ipcMain, dialog, protocol, net, Notification } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { resolveRuntimePaths, assertIsolatedRuntime } = require('./runtime-isolation.cjs')
 
-// 固定 userData 目录，避免 productName 变化导致数据目录漂移（%APPDATA%\clipboard-shelf）
-app.setPath('userData', path.join(app.getPath('appData'), 'clipboard-shelf'))
+// userData 目录：验收实例（CLIPBOARD_SHELF_TEST_ROOT）→ TEST_ROOT；生产 → %APPDATA%\clipboard-shelf
+const runtime = resolveRuntimePaths({ appData: app.getPath('appData') })
+if (runtime.mode === 'test') {
+  app.setPath('userData', runtime.userData)
+} else {
+  app.setPath('userData', path.join(app.getPath('appData'), 'clipboard-shelf'))
+}
+// 启动前硬校验：任一资产路径越界/落入生产 → 立即 abort
+const isolationGuard = assertIsolatedRuntime(runtime, { appData: app.getPath('appData') })
+if (!isolationGuard.ok) {
+  console.error('[RuntimeIsolation] ABORT: ' + isolationGuard.errors.join('; '))
+  app.exit(1)
+}
 
 // ====== 自动更新（仅打包版生效） ======
 let autoUpdater = null
@@ -60,7 +72,11 @@ const petEngine = require('./pet/pet-engine')
 const petTasks = require('./pet-tasks')
 
 // ====== Crash Log ======
-const logPath = path.join(app.getPath('userData'), 'crash.log')
+let logPath = path.join(app.getPath('userData'), 'crash.log')
+if (runtime.mode === 'test') {
+  fs.mkdirSync(runtime.logsDir, { recursive: true })
+  logPath = path.join(runtime.logsDir, 'crash.log')
+}
 function appendCrashLog(text) {
   try {
     const MAX_LOG_SIZE = 1024 * 1024 // 1MB
@@ -89,6 +105,7 @@ process.on('unhandledRejection', (reason) => {
 
 // ====== Core ======
 const { eventBus, Events } = require('./core/event-bus')
+const { resolveShelfFile } = require('./services/shelf-file')
 
 // ====== Memory System ======
 const memoryStore = require('./memory/memory-store')
@@ -730,19 +747,8 @@ app.whenReady().then(async () => {
   // shelf-file://thumb/filename.png → 从 imagesDir/thumb/ 提供文件
   // shelf-file://full/filename.png → 从 imagesDir/full/ 提供文件
   protocol.handle('shelf-file', (request) => {
-    const url = request.url.replace('shelf-file://', '')
-    const [subdir, ...rest] = url.split('/')
-    const filename = rest.join('/')
-    const allowedDirs = ['thumb', 'full']
-    if (!allowedDirs.includes(subdir) || !filename) {
-      return new Response('Not found', { status: 404 })
-    }
-    const filePath = path.join(imagesDirGlobal, subdir, filename)
-    // 安全检查：确保路径在 imagesDir 内
-    const resolved = path.resolve(filePath)
-    if (!resolved.startsWith(path.resolve(imagesDirGlobal))) {
-      return new Response('Forbidden', { status: 403 })
-    }
+    const resolved = resolveShelfFile(request.url, imagesDirGlobal)
+    if (!resolved) return new Response('Not found', { status: 404 })
     return net.fetch('file:///' + resolved)
   })
   // 初始化服务
@@ -764,6 +770,7 @@ app.whenReady().then(async () => {
   // 设置剪贴板监听
   const imagesDir = path.join(app.getPath('userData'), 'images')
   imagesDirGlobal = imagesDir
+  fs.mkdirSync(path.join(imagesDir, 'annotated'), { recursive: true })
   clipboardPipeline.setImageDir(imagesDir)
   clipboardPipeline.setOptions({
     pause: !!config.pauseCapture,

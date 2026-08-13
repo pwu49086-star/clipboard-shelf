@@ -23,9 +23,9 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('fresh database migrates to v3 with entities/worksites and new columns', () => {
+test('fresh database migrates to v4 with entities/worksites/annotations and new columns', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
   const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='entities'").all()
   assert.strictEqual(tables.length, 1)
   const wsTables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='worksites'").all()
@@ -141,11 +141,11 @@ test('deleting items cascades entity rows', () => {
   assert.strictEqual(db.getEntitiesByItem(item.id).length, 0)
 })
 
-test('re-init after close is idempotent and stays v3', async () => {
+test('re-init after close is idempotent and stays v4', async () => {
   db.close()
   await db.init()
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
   const entCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='entities'").get().c
   assert.strictEqual(entCount, 1)
   raw.close()

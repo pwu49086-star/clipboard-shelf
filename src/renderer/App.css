@@ -721,6 +721,96 @@ mark.hl {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* ====== Image Annotator (v1.8.0) ====== */
+.preview-btn.active {
+  background: var(--color-accent);
+  color: #fff;
+}
+.annotator-overlay {
+  z-index: 100;
+}
+.annotator-modal {
+  width: min(92vw, 1080px);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.annotator-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.annotator-tool {
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-primary-light);
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 12px;
+}
+.annotator-tool.active {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+}
+.annotator-tool:disabled {
+  opacity: .45;
+  cursor: default;
+}
+.annotator-color {
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.annotator-hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+.annotator-stage {
+  position: relative;
+  flex: 1;
+  min-height: 360px;
+  overflow: hidden;
+  background: #1c1c1e;
+}
+.annotator-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+.annotator-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
+  font-size: 13px;
+}
+.annotator-text-input {
+  position: absolute;
+  z-index: 5;
+  min-width: 180px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-accent);
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+  color: #111;
+}
 .btn-cancel { background: var(--color-bg); }
 
 /* ====== Settings ====== */

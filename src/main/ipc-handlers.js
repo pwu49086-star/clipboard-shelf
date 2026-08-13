@@ -12,6 +12,8 @@ const os = require('os')
 const { eventBus, Events } = require('./core/event-bus')
 const db = require('./services/db-service')
 const pinManager = require('./services/pin-manager')
+const encryption = require('./services/encryption-service')
+const { canAnnotate } = require('../shared/annotation-gate.cjs')
 
 // Config
 const configPath = path.join(app.getPath('userData'), 'config.json')
@@ -148,6 +150,7 @@ function setup(mainWindow) {
       if (item) {
         if (item.filePath) try { fs.unlinkSync(item.filePath) } catch {}
         if (item.thumbPath) try { fs.unlinkSync(item.thumbPath) } catch {}
+        if (item.annotatedPath) try { fs.unlinkSync(item.annotatedPath) } catch {}
       }
       eventBus.emit(Events.DB_DELETE, { id })
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -163,6 +166,7 @@ function setup(mainWindow) {
     if (item) {
       if (item.filePath) try { fs.unlinkSync(item.filePath) } catch {}
       if (item.thumbPath) try { fs.unlinkSync(item.thumbPath) } catch {}
+      if (item.annotatedPath) try { fs.unlinkSync(item.annotatedPath) } catch {}
     }
     eventBus.emit(Events.DB_DELETE, { id })
     // 通知 renderer 增量删除
@@ -393,6 +397,46 @@ function setup(mainWindow) {
   ipcMain.handle('worksites:update', (e, id, changes) => db.updateWorksite(id, changes || {}))
   ipcMain.handle('worksites:delete', (e, id) => db.deleteWorksite(id))
   ipcMain.handle('items:setWorksite', (e, ids, worksiteId) => db.setItemsWorksite(ids, worksiteId))
+
+  // 图片标注（v1.8.0）
+  ipcMain.handle('annotations:get', (event, itemId) => {
+    const item = db.getItem(Number(itemId))
+    if (!item || item.type !== 'image') return { ok: false, error: '不是图片记录' }
+    return {
+      ok: true,
+      elements: db.getAnnotations(item.id),
+      annotatedPath: item.annotatedPath || null,
+      imageWidth: item.imageWidth || null,
+      imageHeight: item.imageHeight || null
+    }
+  })
+
+  ipcMain.handle('annotations:save', (event, payload) => {
+    const itemId = Number(payload && payload.itemId)
+    const elements = Array.isArray(payload && payload.elements) ? payload.elements : []
+    const pngBase64 = typeof (payload && payload.pngBase64) === 'string' ? payload.pngBase64 : ''
+    const item = db.getItem(itemId)
+    const gate = canAnnotate(item, encryption)
+    if (!gate.ok) return gate
+    if (!pngBase64) return { ok: false, error: '缺少标注图片数据' }
+    try {
+      const buf = Buffer.from(pngBase64, 'base64')
+      const filename = `${itemId}_${Date.now()}.png`
+      const annotatedDir = path.join(imagesDir, 'annotated')
+      fs.mkdirSync(annotatedDir, { recursive: true })
+      const annotatedPath = path.join(annotatedDir, filename)
+      fs.writeFileSync(annotatedPath, buf)
+      db.replaceAnnotations(itemId, elements)
+      const oldPath = item.annotatedPath
+      db.setItemAnnotatedPath(itemId, annotatedPath)
+      if (oldPath && oldPath !== annotatedPath && fs.existsSync(oldPath)) {
+        try { fs.unlinkSync(oldPath) } catch {}
+      }
+      return { ok: true, annotatedPath, filename }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  })
 
   // 导入图片
   ipcMain.handle('import:image', async (event, base64, filename) => {

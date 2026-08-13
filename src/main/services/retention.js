@@ -60,6 +60,7 @@ function run() {
   for (const row of deleted) {
     if (row.filePath) try { fs.unlinkSync(row.filePath) } catch {}
     if (row.thumbPath) try { fs.unlinkSync(row.thumbPath) } catch {}
+    if (row.annotatedPath) try { fs.unlinkSync(row.annotatedPath) } catch {}
   }
   return deleted
 }

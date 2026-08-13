@@ -20,6 +20,9 @@ let key = null
 let state = { enabled: false, salt: null, check: null }
 
 function stateFilePath() {
+  if (process.env.CLIPBOARD_SHELF_TEST_ROOT) {
+    return path.join(process.env.CLIPBOARD_SHELF_TEST_ROOT, 'encryption.json')
+  }
   if (process.env.CLIPBOARD_SHELF_USER_DATA) {
     return path.join(process.env.CLIPBOARD_SHELF_USER_DATA, 'encryption.json')
   }

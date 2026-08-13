@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.8.0 (2026-08-14) — 图片维修标注（Image Annotation）
+
+### 核心能力
+
+- 维修现场图片标注：矩形 / 箭头 / 文字 / 涂鸦 / 马赛克。
+- 原生 HTML Canvas 2D 编辑器（无第三方依赖），支持撤销 / 重做 / 缩放 / 平移。
+- 标注数据模型：`annotations` 表（元素级，数据权威）+ `items.annotatedPath`（合成 PNG 展示缓存）。
+- 坐标一律使用原图像素坐标，与显示缩放无关；导出与编辑所见一致。
+- 修复 P1：pen 涂鸦保存后重新进入编辑器可重放可见（`applyElement` 补齐 pen/path 分支，坐标沿用保存的原图像素坐标，与 rect/arrow/text 一致）。
+- 马赛克为特殊元素：添加后即烧录、不可删除、不可撤销到其之前；编辑过程中即遮挡原图；后续编辑以已烧录合成图为底，不重新暴露原图。
+- 原图保护：full PNG 永远只读；图片预览不再引导外部编辑器修改原图（openInEditor 对图片禁用，改为「标注」入口）。
+- 图片预览双视图：有标注默认显示标注图，可切换「查看原图」；明确区分“原图 = 现场原始证据 / 标注图 = 维修人员说明”。
+- Worksite 自动继承：现场视图内图片标注照常显示/预览/再编辑/输出，不改变 Worksite 数据模型。
+- 隐私硬门禁：`annotations:save` 在主进程 IPC 层拒绝 metadataOnly / sensitivity≠0 / 加密锁定态。
+- `shelf-file://annotated/` 沿用子目录白名单 + 路径越界校验，仅放行合法标注文件。
+- 删除 / 批量删除 / clearNonFavorites / cleanByPolicy / retention 全部联动清理 annotations 行与标注 PNG；Worksite 保护语义不变。
+- 运行时验收沙箱隔离：`CLIPBOARD_SHELF_TEST_ROOT` 统一派生 DB/config/images/logs/backups/pet-tasks 全部资产路径 + 启动前硬校验（越界即 abort）+ fingerprint 快照；仅影响验收实例，生产逻辑不变。
+
+### 技术说明
+
+- migration v4：`items.annotatedPath`（可空）+ `annotations` 表 + 索引；纯增量、幂等、可回滚。
+- 无新第三方依赖；不修改 clipboard-pipeline / capture-policy / encryption 核心 / ocr / collection-output / Worksite 数据模型。
+- 备份边界保持现状：annotations 元数据随 shelf.db 备份；标注 PNG 暂不进入备份（已知限制）。
+
+### 测试
+
+- 新增 migration / geometry / undo-redo / mosaic / DB 联动 / 隐私门禁 / 协议解析测试。
+
+### 已知限制
+
+- 图片文件（full/thumb/annotated）目前不进入现有数据库 backup 机制。
+- 图片文件本身不加密（现状一致）；标注元素 JSON 加密存储。
+- 马赛克不可逆语义以烧录 + flatten 规则保证，不阻止系统级恢复工具（合理边界）。
+- 新复制记录的 Entity Chip 可能需要下一次列表刷新/搜索后显示（不实时推送）。
+- 型号暂仅精确匹配，不支持前缀匹配。
+- 轮询架构仍存在约 ≤1s 的检测窗口。
+- 孤立品牌裸词（如单独“大金”）默认不识别（保守规则）。
+
+---
+
 ## v1.7.0 (2026-08-11) — Worksite（工作现场）
 
 ### 核心能力

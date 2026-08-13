@@ -63,6 +63,20 @@ const MIGRATIONS = [
       'ALTER TABLE items ADD COLUMN worksiteId INTEGER',
       'CREATE INDEX IF NOT EXISTS idx_items_worksite ON items(worksiteId)'
     ]
+  },
+  {
+    version: 4,
+    sql: [
+      'ALTER TABLE items ADD COLUMN annotatedPath TEXT',
+      `CREATE TABLE IF NOT EXISTS annotations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id INTEGER NOT NULL,
+        kind TEXT NOT NULL,
+        data TEXT NOT NULL,
+        createTime INTEGER NOT NULL
+      )`,
+      'CREATE INDEX IF NOT EXISTS idx_annotations_item ON annotations(item_id)'
+    ]
   }
 ]
 
@@ -92,6 +106,7 @@ let db = null
 let dbPath = null
 
 function userDataDir() {
+  if (process.env.CLIPBOARD_SHELF_TEST_ROOT) return path.resolve(process.env.CLIPBOARD_SHELF_TEST_ROOT)
   if (process.env.CLIPBOARD_SHELF_USER_DATA) return process.env.CLIPBOARD_SHELF_USER_DATA
   try {
     if (electronApp) return electronApp.getPath('userData')
@@ -151,6 +166,12 @@ function getItemOcrText(id) {
 function getItemContent(id) {
   const row = db.prepare('SELECT content FROM items WHERE id = ?').get(id)
   return row ? row.content : null
+}
+
+function getItem(id) {
+  if (!db || !Number.isInteger(id)) return null
+  const row = db.prepare('SELECT * FROM items WHERE id = ?').get(id)
+  return row ? decryptRow(row) : null
 }
 
 function buildFtsQuery(search) {
@@ -315,9 +336,10 @@ function decryptRow(r) {
 
 function remove(id) {
   if (!db) return null
-  const item = db.prepare('SELECT filePath, thumbPath FROM items WHERE id = ?').get(id)
+  const item = db.prepare('SELECT filePath, thumbPath, annotatedPath FROM items WHERE id = ?').get(id)
   db.prepare('DELETE FROM items WHERE id = ?').run(id)
   db.prepare('DELETE FROM entities WHERE item_id = ?').run(id)
+  db.prepare('DELETE FROM annotations WHERE item_id = ?').run(id)
   syncFtsDelete(id)
   return item || null
 }
@@ -516,17 +538,19 @@ function updateOcrText(id, ocrText) {
 
 function clearNonFavorites() {
   if (!db) return
-  const rows = db.prepare('SELECT id, filePath, thumbPath FROM items WHERE isFavorite = 0 AND worksiteId IS NULL').all()
+  const rows = db.prepare('SELECT id, filePath, thumbPath, annotatedPath FROM items WHERE isFavorite = 0 AND worksiteId IS NULL').all()
   db.prepare('DELETE FROM items WHERE isFavorite = 0 AND worksiteId IS NULL').run()
 
   const ids = rows.map(r => r.id)
   deleteEntitiesForIds(ids)
+  deleteAnnotationsForIds(ids)
   for (const id of ids) syncFtsDelete(id)
   if (ids.length > 0) eventBus.emit(Events.DB_BATCH_DELETE, { ids })
 
   for (const row of rows) {
     if (row.filePath) try { fs.unlinkSync(row.filePath) } catch {}
     if (row.thumbPath) try { fs.unlinkSync(row.thumbPath) } catch {}
+    if (row.annotatedPath) try { fs.unlinkSync(row.annotatedPath) } catch {}
   }
 }
 
@@ -564,7 +588,7 @@ function cleanByPolicy(policy = {}) {
   if (maxDays > 0) {
     const cutoff = now - maxDays * 24 * 60 * 60 * 1000
     for (const r of db.prepare(`
-      SELECT id, filePath, thumbPath FROM items
+      SELECT id, filePath, thumbPath, annotatedPath FROM items
       WHERE isFavorite = 0 AND worksiteId IS NULL AND createTime < ?
     `).all(cutoff)) {
       candidates.set(r.id, r)
@@ -577,7 +601,7 @@ function cleanByPolicy(policy = {}) {
     const toDelete = count - maxItems
     if (toDelete > 0) {
       for (const r of db.prepare(`
-        SELECT id, filePath, thumbPath FROM items
+        SELECT id, filePath, thumbPath, annotatedPath FROM items
         WHERE isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
@@ -595,7 +619,7 @@ function cleanByPolicy(policy = {}) {
     const toDelete = imageCount - maxImageItems
     if (toDelete > 0) {
       for (const r of db.prepare(`
-        SELECT id, filePath, thumbPath FROM items
+        SELECT id, filePath, thumbPath, annotatedPath FROM items
         WHERE type = 'image' AND isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
@@ -611,6 +635,7 @@ function cleanByPolicy(policy = {}) {
   const placeholders = ids.map(() => '?').join(',')
   db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids)
   deleteEntitiesForIds(ids)
+  deleteAnnotationsForIds(ids)
   for (const id of ids) syncFtsDelete(id)
   eventBus.emit(Events.DB_BATCH_DELETE, { ids })
   return rows
@@ -841,6 +866,56 @@ function setItemsWorksite(ids, worksiteId) {
   return { ok: true, updated: itemIds.length }
 }
 
+// ====== Image Annotation（v1.8.0）======
+function deleteAnnotationsForIds(ids) {
+  if (!db || !Array.isArray(ids) || ids.length === 0) return
+  const ints = ids.map(Number).filter(Number.isInteger)
+  for (let i = 0; i < ints.length; i += 500) {
+    const chunk = ints.slice(i, i + 500)
+    db.prepare(`DELETE FROM annotations WHERE item_id IN (${chunk.map(() => '?').join(',')})`).run(...chunk)
+  }
+}
+
+function getAnnotations(itemId) {
+  if (!db || !Number.isInteger(itemId)) return []
+  return db.prepare('SELECT * FROM annotations WHERE item_id = ? ORDER BY id').all(itemId).map(r => {
+    let el = null
+    try { el = JSON.parse(encryption.decrypt(r.data)) } catch { el = null }
+    return el && typeof el === 'object' ? { ...el, kind: r.kind } : null
+  }).filter(Boolean)
+}
+
+/**
+ * 替换非马赛克标注元素；已烧录的 mosaic 行（flattened）保留。
+ * 新增元素中若含 mosaic，同样以 flattened 语义插入。
+ */
+function replaceAnnotations(itemId, elements) {
+  if (!db || !Number.isInteger(itemId)) return { ok: false, error: '无效记录' }
+  const list = Array.isArray(elements) ? elements.filter(e => e && typeof e === 'object') : []
+  const tx = db.transaction(() => {
+    db.prepare(`DELETE FROM annotations WHERE item_id = ? AND kind != 'mosaic'`).run(itemId)
+    const now = Date.now()
+    const ins = db.prepare('INSERT INTO annotations (item_id, kind, data, createTime) VALUES (?, ?, ?, ?)')
+    for (const el of list) {
+      const kind = String(el.kind || '')
+      if (!kind) continue
+      const payload = { ...el, kind: undefined, flattened: kind === 'mosaic' ? true : !!el.flattened }
+      const data = encryption.isEnabled()
+        ? encryption.encrypt(JSON.stringify(payload))
+        : JSON.stringify(payload)
+      ins.run(itemId, kind, data, now)
+    }
+  })
+  tx()
+  return { ok: true, count: list.length }
+}
+
+function setItemAnnotatedPath(itemId, annotatedPath) {
+  if (!db || !Number.isInteger(itemId)) return false
+  db.prepare('UPDATE items SET annotatedPath = ? WHERE id = ?').run(annotatedPath || null, itemId)
+  return true
+}
+
 // ====== Close ======
 function close() {
   if (db) {
@@ -897,6 +972,7 @@ module.exports = {
   getDueReminders, markNoteReminded,
   getWorksite, createWorksite, listWorksites, updateWorksite, deleteWorksite,
   setItemsWorksite,
+  getItem, getAnnotations, replaceAnnotations, setItemAnnotatedPath, deleteAnnotationsForIds,
   clearFts, reEncryptAll, decryptAllAndRebuildFts,
   MIGRATIONS
 }

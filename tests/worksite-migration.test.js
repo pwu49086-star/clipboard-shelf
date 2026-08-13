@@ -82,9 +82,9 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('v2 → v3 migration: worksites table + worksiteId column, 2000+ legacy data intact', () => {
+test('v2 → v4 migration: worksites/annotations tables + columns, 2000+ legacy data intact', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
   assert.strictEqual(
     raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='worksites'").get().c,
     1
@@ -108,11 +108,11 @@ test('v2 → v3 migration: worksites table + worksiteId column, 2000+ legacy dat
   assert.strictEqual(db.getAllNotes().some(n => n.title === '旧便签'), true)
 })
 
-test('re-init is idempotent and stays v3', async () => {
+test('re-init is idempotent and stays v4', async () => {
   db.close()
   await db.init()
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 3)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
   raw.close()
   assert.deepStrictEqual(db.listWorksites(), [])
 })

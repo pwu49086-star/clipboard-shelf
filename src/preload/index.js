@@ -122,6 +122,10 @@ contextBridge.exposeInMainWorld('api', {
   worksitesDelete: (id) => ipcRenderer.invoke('worksites:delete', id),
   setItemsWorksite: (ids, worksiteId) => ipcRenderer.invoke('items:setWorksite', ids, worksiteId),
 
+  // 图片标注（v1.8.0）
+  annotationsGet: (itemId) => ipcRenderer.invoke('annotations:get', itemId),
+  annotationsSave: (payload) => ipcRenderer.invoke('annotations:save', payload),
+
   // 配置导入导出
   configExport: () => ipcRenderer.invoke('config:export'),
   configImport: () => ipcRenderer.invoke('config:import'),

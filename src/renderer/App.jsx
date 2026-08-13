@@ -7,6 +7,7 @@ import PetSettings from './components/PetSettings'
 import NotesPanel from './components/NotesPanel'
 import WorksitesPanel from './components/WorksitesPanel'
 import WorksitePicker from './components/WorksitePicker'
+import ImageAnnotator from './components/ImageAnnotator'
 import CommandPalette from './components/CommandPalette'
 import pasteUtils from '../shared/paste-utils.cjs'
 import itemsMerge from '../shared/items-merge.cjs'
@@ -38,6 +39,8 @@ export default function App() {
   const [toast, setToast] = useState(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState(null)
   const [previewItem, setPreviewItem] = useState(null)
+  const [previewShowAnnotated, setPreviewShowAnnotated] = useState(true)
+  const [annotatorItem, setAnnotatorItem] = useState(null)
   const [draftModal, setDraftModal] = useState(null)
   const [petFeedback, setPetFeedback] = useState(null)
   const [multiMode, setMultiMode] = useState(false)
@@ -441,12 +444,16 @@ export default function App() {
   const handleBack = useCallback(() => setPanel('main'), [])
   
   const closePreview = useCallback(() => setPreviewItem(null), [])
-  const openPreviewEditor = useCallback(async () => {
-    if (previewItem?.filePath) {
-      try { await window.api.openInEditor(previewItem.filePath) } catch {}
-    }
-    setPreviewItem(null)
+  const openAnnotator = useCallback(() => {
+    if (previewItem) setAnnotatorItem(previewItem)
   }, [previewItem])
+
+  const handleAnnotationSaved = useCallback((result) => {
+    if (!result || !result.ok || !previewItem) return
+    const annotatedPath = result.annotatedPath
+    setItems(prev => prev.map(i => i.id === previewItem.id ? { ...i, annotatedPath } : i))
+    showToast('标注已保存')
+  }, [previewItem, showToast])
 
   // 键盘导航
   useEffect(() => {
@@ -663,16 +670,40 @@ export default function App() {
       {previewItem && (
         <div className="preview-overlay" onClick={closePreview}>
           <div className="preview-actions">
-            <button className="preview-btn" onClick={(e) => { e.stopPropagation(); openPreviewEditor() }}>编辑</button>
+            {previewItem.annotatedPath && (
+              <>
+                <button
+                  className={`preview-btn ${previewShowAnnotated ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setPreviewShowAnnotated(true) }}
+                >标注图</button>
+                <button
+                  className={`preview-btn ${!previewShowAnnotated ? 'active' : ''}`}
+                  onClick={(e) => { e.stopPropagation(); setPreviewShowAnnotated(false) }}
+                >原图</button>
+              </>
+            )}
+            <button className="preview-btn" onClick={(e) => { e.stopPropagation(); openAnnotator() }}>标注</button>
             <button className="preview-btn" onClick={(e) => { e.stopPropagation(); closePreview() }}>关闭</button>
           </div>
           <img
             className="preview-img"
-            src={'shelf-file://full/' + previewItem.filePath.replace(/\\/g, '/').split('/').pop()}
+            src={previewShowAnnotated && previewItem.annotatedPath
+              ? 'shelf-file://annotated/' + previewItem.annotatedPath.replace(/\\/g, '/').split('/').pop()
+              : 'shelf-file://full/' + previewItem.filePath.replace(/\\/g, '/').split('/').pop()}
             onClick={(e) => e.stopPropagation()}
-            onError={(e) => { e.target.src = 'shelf-file://thumb/' + previewItem.thumbPath?.replace(/\\/g, '/').split('/').pop() }}
+            onError={(e) => {
+              e.target.src = 'shelf-file://thumb/' + previewItem.thumbPath?.replace(/\\/g, '/').split('/').pop()
+            }}
           />
         </div>
+      )}
+
+      {annotatorItem && (
+        <ImageAnnotator
+          item={annotatorItem}
+          onClose={() => setAnnotatorItem(null)}
+          onSaved={handleAnnotationSaved}
+        />
       )}
 
       {editModal && (
