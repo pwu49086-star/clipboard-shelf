@@ -523,7 +523,7 @@ function setup(mainWindow) {
 
   // 翻译
   ipcMain.handle('translate:text', async (event, text, from, to) => {
-    if (!config.allowOnlineTranslate) {
+    if (config.allowOnlineTranslate === false) {
       console.warn('[Translate] disabled (config.allowOnlineTranslate = false)')
       return null
     }

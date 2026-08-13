@@ -98,6 +98,9 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [textDraft, setTextDraft] = useState(null)
   const [textValue, setTextValue] = useState('')
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelBusy, setPanelBusy] = useState(false)
+  const [panel, setPanel] = useState(null)
   const [version, setVersion] = useState(0)
   const bump = useCallback(() => setVersion(v => v + 1), [])
 
@@ -275,6 +278,56 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
     bump()
   }
 
+  const doOcr = async () => {
+    if (!item || !item.filePath) { setPanel({ label: '提取文字', result: '没有可用原图' }); return }
+    setPanelBusy(true)
+    try {
+      const text = await window.api.ocrRecognizePath(item.filePath)
+      const result = (text || '').trim()
+      setPanel({ label: '识别结果', result: result || '未识别到文字' })
+    } catch {
+      setPanel({ label: '提取文字', result: '识别失败' })
+    } finally {
+      setPanelBusy(false)
+    }
+  }
+
+  const doTranslate = async () => {
+    if (!item || !item.filePath) { setPanel({ label: '翻译结果', result: '没有可用原图' }); return }
+    setPanelBusy(true)
+    try {
+      const text = await window.api.ocrRecognizePath(item.filePath)
+      const ocr = (text || '').trim()
+      if (!ocr) { setPanel({ label: '翻译结果', result: '未识别到文字' }); return }
+      const hasChinese = /[\u4e00-\u9fa5]/.test(ocr)
+      const translated = await window.api.translateText(ocr, hasChinese ? 'zh' : 'en', hasChinese ? 'en' : 'zh')
+      setPanel({ label: '原文', result: ocr, translated: translated || '翻译失败' })
+    } catch {
+      setPanel({ label: '翻译结果', result: '翻译失败' })
+    } finally {
+      setPanelBusy(false)
+    }
+  }
+
+  const runAI = async (action) => {
+    const src = (panel && panel.result) || ''
+    if (!src) return
+    setPanelBusy(true)
+    try {
+      const r = await window.api.aiProcess({ action, text: src })
+      const label = action === 'summary' ? 'AI 总结' : action === 'explain' ? 'AI 解释' : '工单草稿'
+      setPanel(p => ({ ...(p || {}), label, result: (r && r.text) || (r && r.error) || '处理失败' }))
+    } catch {
+      setPanel(p => ({ ...(p || {}), result: '处理失败' }))
+    } finally {
+      setPanelBusy(false)
+    }
+  }
+
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text || '') } catch {}
+  }
+
   const save = async () => {
     if (!imgNatural.current) return
     setSaving(true)
@@ -329,6 +382,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
               {t.label}
             </button>
           ))}
+          <button className={`annotator-tool ${panelOpen ? 'active' : ''}`} onClick={() => setPanelOpen(v => !v)}>提取/翻译</button>
           <input type="color" className="annotator-color" value={color} onChange={e => setColor(e.target.value)} title="颜色" />
           <button className="annotator-tool" onClick={() => { if (storeRef.current.undo()) bump() }} disabled={!storeRef.current.canUndo()}>撤销</button>
           <button className="annotator-tool" onClick={() => { if (storeRef.current.redo()) bump() }} disabled={!storeRef.current.canRedo()}>重做</button>
@@ -355,6 +409,46 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
               onChange={e => setTextValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') commitText(); if (e.key === 'Escape') setTextDraft(null) }}
             />
+          )}
+          {panelOpen && (
+            <div className="annotator-panel">
+              <div className="annotator-panel-header">
+                <span>提取/翻译</span>
+                <button className="annotator-panel-close" onClick={() => setPanelOpen(false)}>×</button>
+              </div>
+              <div className="annotator-panel-actions">
+                <button onClick={doOcr} disabled={panelBusy}>提取文字</button>
+                <button onClick={doTranslate} disabled={panelBusy}>翻译</button>
+              </div>
+              {panelBusy && <div className="annotator-panel-loading">处理中…</div>}
+              {!panelBusy && panel && (
+                <div className="annotator-panel-body">
+                  <div className="annotator-panel-label">{panel.label}</div>
+                  <div className="annotator-panel-text">{panel.result}</div>
+                  <div className="annotator-panel-btnrow">
+                    <button onClick={() => copyText(panel.result)}>复制</button>
+                    <button onClick={() => runAI('summary')} disabled={!panel.result}>AI 总结</button>
+                    <button onClick={() => runAI('explain')} disabled={!panel.result}>AI 解释</button>
+                    <button onClick={() => runAI('workorder')} disabled={!panel.result}>生成工单</button>
+                  </div>
+                  {panel.translated && (
+                    <>
+                      <div className="annotator-panel-label">译文</div>
+                      <div className="annotator-panel-text">{panel.translated}</div>
+                      <div className="annotator-panel-btnrow">
+                        <button onClick={() => copyText(panel.translated)}>复制译文</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+              {!panelBusy && !panel && (
+                <div className="annotator-panel-body">
+                  <div className="annotator-panel-label">提示</div>
+                  <div className="annotator-panel-text">对当前图片原图执行 OCR 提取文字、翻译或 AI 处理；不会修改原图。</div>
+                </div>
+              )}
+            </div>
           )}
         </div>
         <div className="modal-footer">

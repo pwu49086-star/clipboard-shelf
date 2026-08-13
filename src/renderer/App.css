@@ -811,6 +811,102 @@ mark.hl {
   background: #fff;
   color: #111;
 }
+.annotator-panel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  bottom: 8px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+  z-index: 10;
+}
+.annotator-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
+  font-weight: 600;
+}
+.annotator-panel-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+.annotator-panel-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+}
+.annotator-panel-actions button {
+  flex: 1;
+  padding: 5px 0;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-primary-light);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+.annotator-panel-actions button:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.annotator-panel-loading {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.annotator-panel-body {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 10px;
+}
+.annotator-panel-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin: 6px 0 4px;
+}
+.annotator-panel-text {
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--color-primary-light);
+  max-height: 200px;
+  overflow: auto;
+}
+.annotator-panel-btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.annotator-panel-btnrow button {
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 11px;
+  cursor: pointer;
+}
+.annotator-panel-btnrow button:disabled {
+  opacity: .5;
+  cursor: default;
+}
 .btn-cancel { background: var(--color-bg); }
 
 /* ====== Settings ====== */
