@@ -14,14 +14,14 @@ const { resolveRuntimePaths, assertIsolatedRuntime } = require('./runtime-isolat
 const runtime = resolveRuntimePaths({ appData: app.getPath('appData') })
 if (runtime.mode === 'test') {
   app.setPath('userData', runtime.userData)
+  // 验收实例启动前硬校验：任一资产路径越界/落入生产 → 立即 abort
+  const isolationGuard = assertIsolatedRuntime(runtime, { appData: app.getPath('appData') })
+  if (!isolationGuard.ok) {
+    console.error('[RuntimeIsolation] ABORT: ' + isolationGuard.errors.join('; '))
+    app.exit(1)
+  }
 } else {
   app.setPath('userData', path.join(app.getPath('appData'), 'clipboard-shelf'))
-}
-// 启动前硬校验：任一资产路径越界/落入生产 → 立即 abort
-const isolationGuard = assertIsolatedRuntime(runtime, { appData: app.getPath('appData') })
-if (!isolationGuard.ok) {
-  console.error('[RuntimeIsolation] ABORT: ' + isolationGuard.errors.join('; '))
-  app.exit(1)
 }
 
 // ====== 自动更新（仅打包版生效） ======

@@ -51,12 +51,29 @@ test('9: TEST_ROOT = 生产 userData → abort', () => {
   assert.ok(g.errors.some(e => e.includes('生产 userData')))
 })
 
-test('TEST_ROOT 缺失（生产模式）→ 验收 guard abort；路径回退生产', () => {
+test('生产模式：不要求 TEST_ROOT，路径回退生产，guard 不属于生产启动路径（P0 regression）', () => {
   const r = resolveRuntimePaths({ env: {}, appData: APP_DATA })
   assert.strictEqual(r.mode, 'production')
   assert.strictEqual(r.userData, productionUserData(APP_DATA))
-  const g = assertIsolatedRuntime(r, { appData: APP_DATA, env: {} })
-  assert.strictEqual(g.ok, false)
+  assert.strictEqual(r.dbPath, path.join(productionUserData(APP_DATA), 'shelf.db'))
+  assert.strictEqual(r.configPath, path.join(productionUserData(APP_DATA), 'config.json'))
+  assert.strictEqual(r.testRoot, null)
+  // 生产模式不属于验收实例：main（index.js）仅在 runtime.mode === 'test' 时调用
+  // assertIsolatedRuntime；生产模式直接放行，不执行 acceptance runtime hard abort。
+  assert.strictEqual(r.mode === 'test', false)
+})
+
+test('验收模式：TEST_ROOT 正确时 guard 放行，路径不一致时 abort', () => {
+  const ok = resolveRuntimePaths({ env: { CLIPBOARD_SHELF_TEST_ROOT: TEST_ROOT }, appData: APP_DATA })
+  assert.strictEqual(ok.mode, 'test')
+  const gOk = assertIsolatedRuntime(ok, { appData: APP_DATA, env: {} })
+  assert.strictEqual(gOk.ok, true, gOk.errors.join('; '))
+
+  const bad = resolveRuntimePaths({ env: { CLIPBOARD_SHELF_TEST_ROOT: TEST_ROOT }, appData: APP_DATA })
+  bad.configPath = path.join(APP_DATA, 'clipboard-shelf', 'config.json')
+  const gBad = assertIsolatedRuntime(bad, { appData: APP_DATA, env: {} })
+  assert.strictEqual(gBad.ok, false)
+  assert.ok(gBad.errors.some(e => e.includes('configPath')))
 })
 
 test('TEST_ROOT 非绝对路径 / 不存在 → abort', () => {
