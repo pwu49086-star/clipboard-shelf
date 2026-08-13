@@ -887,6 +887,8 @@ mark.hl {
   padding: 10px;
   background: var(--color-primary-light);
   max-height: none;
+  user-select: text;
+  -webkit-user-select: text;
 }
 .annotator-line {
   min-height: 1.5em;

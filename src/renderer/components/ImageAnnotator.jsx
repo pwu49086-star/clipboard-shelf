@@ -340,6 +340,11 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
     setTimeout(() => el.classList.remove('flash-copied'), 600)
   }
 
+  const hasTextSelection = () => {
+    const sel = window.getSelection()
+    return !!sel && sel.toString().length > 0
+  }
+
   const segmentWords = (text) => {
     try {
       const seg = new Intl.Segmenter('zh-Hans', { granularity: 'word' })
@@ -357,7 +362,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
         className="annotator-line"
         title="点击空白处复制整行"
         onClick={(e) => {
-          if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget && !hasTextSelection()) {
             copyText(line)
             flashCopied(e.currentTarget)
           }
@@ -370,6 +375,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
               className="annotator-token"
               title="点击复制该词"
               onClick={(e) => {
+                if (hasTextSelection()) return
                 e.stopPropagation()
                 copyText(part.text)
                 flashCopied(e.currentTarget)
