@@ -452,7 +452,7 @@ export default function App() {
     if (!result || !result.ok || !previewItem) return
     const annotatedPath = result.annotatedPath
     setItems(prev => prev.map(i => i.id === previewItem.id ? { ...i, annotatedPath } : i))
-    showToast('标注已保存')
+    showToast('已保存')
   }, [previewItem, showToast])
 
   // 键盘导航
@@ -682,7 +682,7 @@ export default function App() {
                 >原图</button>
               </>
             )}
-            <button className="preview-btn" onClick={(e) => { e.stopPropagation(); openAnnotator() }}>标注</button>
+            <button className="preview-btn" onClick={(e) => { e.stopPropagation(); openAnnotator() }}>图片工具</button>
             <button className="preview-btn" onClick={(e) => { e.stopPropagation(); closePreview() }}>关闭</button>
           </div>
           <img

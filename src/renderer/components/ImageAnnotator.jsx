@@ -436,7 +436,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
     <div className="modal-overlay annotator-overlay" onClick={onClose}>
       <div className="modal annotator-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
-          <span className="modal-title">图片标注{baseAnnotated.current ? '（标注图基础上）' : ''}</span>
+          <span className="modal-title">图片工具{baseAnnotated.current ? '（标注图基础上）' : ''}</span>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="annotator-toolbar">
