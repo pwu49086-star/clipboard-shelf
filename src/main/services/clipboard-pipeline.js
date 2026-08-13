@@ -39,6 +39,7 @@ let queue = []
 let processing = false
 let imagesDir = ''
 let skipCount = 0
+let skipText = null
 
 // ====== Hash ======
 function hashBuffer(buf) {
@@ -216,6 +217,11 @@ function checkClipboard() {
 
     const text = clipboard.readText()
     const normalized = normalizeText(text)
+    if (normalized && skipText !== null) {
+      // 跳过与本次写入完全相同的文本，直到剪贴板内容变化为止（避免后续轮询重复捕获）
+      if (normalized === skipText) return
+      skipText = null
+    }
     if (normalized) {
       const hash = hashText(normalized)
       if (seenTextHashes.has(hash)) return
@@ -285,7 +291,12 @@ function stop() {
 /**
  * 跳过下一次检测（复制到剪贴板时使用）
  */
-function skipNextCopy() {
+function skipNextCopy(text) {
+  // 精确文本跳过：仅跳过与本次写入完全相同的文本（标注面板点词/点行复制）
+  if (typeof text === 'string' && text.trim()) {
+    skipText = normalizeText(text)
+    return
+  }
   skipCount++
 }
 

@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // 命令面板
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),
+  writeClipboardText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
   exportMarkdown: (payload) => ipcRenderer.invoke('output:exportMarkdown', payload),
   openPath: (p) => ipcRenderer.invoke('system:openPath', p),
   clearHistory: () => ipcRenderer.invoke('items:clearNonFavorites'),

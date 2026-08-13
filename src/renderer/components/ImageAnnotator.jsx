@@ -325,7 +325,64 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
   }
 
   const copyText = async (text) => {
-    try { await navigator.clipboard.writeText(text || '') } catch {}
+    try {
+      if (window.api && window.api.writeClipboardText) {
+        await window.api.writeClipboardText(text || '')
+      } else {
+        await navigator.clipboard.writeText(text || '')
+      }
+    } catch {}
+  }
+
+  const flashCopied = (el) => {
+    if (!el) return
+    el.classList.add('flash-copied')
+    setTimeout(() => el.classList.remove('flash-copied'), 600)
+  }
+
+  const segmentWords = (text) => {
+    try {
+      const seg = new Intl.Segmenter('zh-Hans', { granularity: 'word' })
+      return [...seg.segment(text)].map(s => ({ text: s.segment, wordLike: !!s.isWordLike }))
+    } catch {
+      return String(text).split(/(\s+)/).map(part => ({ text: part, wordLike: /\S/.test(part) }))
+    }
+  }
+
+  const renderClickableText = (text) => {
+    if (!text) return null
+    return String(text).split('\n').map((line, li) => (
+      <div
+        key={li}
+        className="annotator-line"
+        title="点击空白处复制整行"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            copyText(line)
+            flashCopied(e.currentTarget)
+          }
+        }}
+      >
+        {line
+          ? segmentWords(line).map((part, pi) => part.wordLike ? (
+            <span
+              key={pi}
+              className="annotator-token"
+              title="点击复制该词"
+              onClick={(e) => {
+                e.stopPropagation()
+                copyText(part.text)
+                flashCopied(e.currentTarget)
+              }}
+            >
+              {part.text}
+            </span>
+          ) : (
+            <span key={pi}>{part.text}</span>
+          ))
+          : '\u00A0'}
+      </div>
+    ))
   }
 
   const save = async () => {
@@ -424,7 +481,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
               {!panelBusy && panel && (
                 <div className="annotator-panel-body">
                   <div className="annotator-panel-label">{panel.label}</div>
-                  <div className="annotator-panel-text">{panel.result}</div>
+                  <div className="annotator-panel-text">{renderClickableText(panel.result)}</div>
                   <div className="annotator-panel-btnrow">
                     <button onClick={() => copyText(panel.result)}>复制</button>
                     <button onClick={() => runAI('summary')} disabled={!panel.result}>AI 总结</button>
@@ -434,7 +491,7 @@ export default function ImageAnnotator({ item, onClose, onSaved }) {
                   {panel.translated && (
                     <>
                       <div className="annotator-panel-label">译文</div>
-                      <div className="annotator-panel-text">{panel.translated}</div>
+                      <div className="annotator-panel-text">{renderClickableText(panel.translated)}</div>
                       <div className="annotator-panel-btnrow">
                         <button onClick={() => copyText(panel.translated)}>复制译文</button>
                       </div>

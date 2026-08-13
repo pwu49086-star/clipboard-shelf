@@ -888,6 +888,28 @@ mark.hl {
   background: var(--color-primary-light);
   max-height: none;
 }
+.annotator-line {
+  min-height: 1.5em;
+  border-radius: 3px;
+  cursor: text;
+}
+.annotator-line:hover {
+  background: rgba(0, 0, 0, .05);
+}
+.annotator-token {
+  cursor: copy;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+.annotator-token:hover {
+  background: var(--color-accent);
+  color: #fff;
+}
+.annotator-line.flash-copied,
+.annotator-token.flash-copied {
+  background: var(--color-accent);
+  color: #fff;
+}
 .annotator-panel-btnrow {
   display: flex;
   flex-wrap: wrap;

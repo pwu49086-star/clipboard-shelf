@@ -479,6 +479,15 @@ function setup(mainWindow) {
   // 剪贴板读取（命令面板用）
   ipcMain.handle('clipboard:readText', () => clipboard.readText())
 
+  // 写入纯文本（标注面板点词/点行复制；skipNextCopy 避免自我捕获）
+  ipcMain.handle('clipboard:writeText', (event, text) => {
+    const watcher = require('./services/clipboard-pipeline')
+    const value = String(text == null ? '' : text)
+    watcher.skipNextCopy(value)
+    clipboard.writeText(value)
+    return true
+  })
+
   // 导出 Markdown（多选输出）：保存对话框 + 写入 + 打开所在文件夹
   ipcMain.handle('output:exportMarkdown', async (event, payload) => {
     const content = payload && typeof payload.content === 'string' ? payload.content.trim() : ''
