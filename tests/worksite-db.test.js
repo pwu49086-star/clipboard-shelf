@@ -7,7 +7,7 @@ const Database = require('../node_modules/better-sqlite3')
 
 const userData = path.join(os.tmpdir(), `clipboard-shelf-worksite-db-${Date.now()}`)
 fs.mkdirSync(userData, { recursive: true })
-process.env.CLIPBOARD_SHELF_USER_DATA = userData
+process.env.CLIPBOARD_SHELF_TEST_ROOT = userData
 
 const db = require('../src/main/services/db-service.js')
 const encryption = require('../src/main/services/encryption-service.js')

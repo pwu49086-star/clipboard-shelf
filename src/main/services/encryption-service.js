@@ -23,8 +23,11 @@ function stateFilePath() {
   if (process.env.CLIPBOARD_SHELF_TEST_ROOT) {
     return path.join(process.env.CLIPBOARD_SHELF_TEST_ROOT, 'encryption.json')
   }
-  if (process.env.CLIPBOARD_SHELF_USER_DATA) {
+  if (process.env.CLIPBOARD_SHELF_USER_DATA && process.env.CLIPBOARD_SHELF_TEST_ROOT) {
     return path.join(process.env.CLIPBOARD_SHELF_USER_DATA, 'encryption.json')
+  }
+  if (process.env.CLIPBOARD_SHELF_USER_DATA) {
+    console.warn('[RuntimeIsolation] Ignoring CLIPBOARD_SHELF_USER_DATA outside test mode')
   }
   try {
     if (electronApp) return path.join(electronApp.getPath('userData'), 'encryption.json')

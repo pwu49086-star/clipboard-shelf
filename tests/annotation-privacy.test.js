@@ -50,7 +50,7 @@ test('IPC smoke: annotations:save handler must call canAnnotate gate', () => {
 
 test('IPC smoke: delete handlers must unlink annotatedPath (delete linkage regression)', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ipc-handlers.js'), 'utf8')
-  const unlinkCount = (src.match(/if \(item\.annotatedPath\) try \{ fs\.unlinkSync\(item\.annotatedPath\) \} catch \{\}/g) || []).length
+  const unlinkCount = (src.match(/unlink\(item\.annotatedPath,/g) || []).length
   assert.ok(src.includes("ipcMain.handle('items:delete'"))
   assert.ok(src.includes("ipcMain.handle('items:batchDelete'"))
   assert.ok(unlinkCount >= 2, `annotatedPath must be unlinked in both delete handlers, got ${unlinkCount}`)

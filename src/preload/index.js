@@ -50,6 +50,16 @@ contextBridge.exposeInMainWorld('api', {
   // 命令面板
   readClipboardText: () => ipcRenderer.invoke('clipboard:readText'),
   writeClipboardText: (text) => ipcRenderer.invoke('clipboard:writeText', text),
+
+  // 备份与恢复（v1.9.0）
+  backupList: () => ipcRenderer.invoke('backup:list'),
+  backupCreate: () => ipcRenderer.invoke('backup:create'),
+  backupVerify: (dir) => ipcRenderer.invoke('backup:verify', dir),
+  backupGetSettings: () => ipcRenderer.invoke('backup:getSettings'),
+  backupSetSettings: (s) => ipcRenderer.invoke('backup:setSettings', s),
+  backupRestore: (dir) => ipcRenderer.invoke('backup:restore', dir),
+  integrityScan: (baseline) => ipcRenderer.invoke('integrity:scan', baseline),
+  retentionDryRun: (policy) => ipcRenderer.invoke('retention:dryRun', policy),
   exportMarkdown: (payload) => ipcRenderer.invoke('output:exportMarkdown', payload),
   openPath: (p) => ipcRenderer.invoke('system:openPath', p),
   clearHistory: () => ipcRenderer.invoke('items:clearNonFavorites'),

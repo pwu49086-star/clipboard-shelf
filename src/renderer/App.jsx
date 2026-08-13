@@ -209,7 +209,8 @@ export default function App() {
 
   const handleBatchDelete = useCallback(async () => {
     if (selectedIds.size === 0) return
-    if (!window.confirm(`确定删除选中的 ${selectedIds.size} 条记录？`)) return
+    const imgCount = items.filter(i => selectedIds.has(i.id) && i.type === 'image').length
+    if (!window.confirm(`确定删除选中的 ${selectedIds.size} 条记录（其中 ${imgCount} 张图片）？`)) return
     try {
       const ids = [...selectedIds]
       await window.api.batchDeleteItems(ids)
@@ -218,7 +219,7 @@ export default function App() {
       setSelectedId(null)
       showToast(`已删除 ${ids.length} 条记录`)
     } catch (e) { console.error('Batch delete failed:', e) }
-  }, [selectedIds, showToast])
+  }, [selectedIds, items, showToast])
 
   const handleEntityClick = useCallback((type, value) => {
     setSearch(filterToSearchText({ type, value }))

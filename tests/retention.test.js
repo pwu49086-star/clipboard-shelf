@@ -8,7 +8,7 @@ const { resolvePolicy, configure, getPolicy } = require('../src/main/services/re
 
 const userData = path.join(os.tmpdir(), `clipboard-shelf-retention-test-${Date.now()}`)
 fs.mkdirSync(userData, { recursive: true })
-process.env.CLIPBOARD_SHELF_USER_DATA = userData
+process.env.CLIPBOARD_SHELF_TEST_ROOT = userData
 
 const db = require('../src/main/services/db-service.js')
 

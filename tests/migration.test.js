@@ -38,7 +38,7 @@ oldDb.prepare('INSERT INTO items (type, content, createTime) VALUES (?, ?, ?)').
 oldDb.prepare('INSERT INTO notes (title, content, createTime, updateTime) VALUES (?, ?, ?, ?)').run('旧便签', '内容', Date.now(), Date.now())
 oldDb.close()
 
-process.env.CLIPBOARD_SHELF_USER_DATA = userData
+process.env.CLIPBOARD_SHELF_TEST_ROOT = userData
 const db = require('../src/main/services/db-service.js')
 
 test.before(async () => {

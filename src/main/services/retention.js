@@ -58,11 +58,35 @@ function run() {
   if (!current.enabled) return []
   const deleted = db.cleanByPolicy(current)
   for (const row of deleted) {
-    if (row.filePath) try { fs.unlinkSync(row.filePath) } catch {}
-    if (row.thumbPath) try { fs.unlinkSync(row.thumbPath) } catch {}
-    if (row.annotatedPath) try { fs.unlinkSync(row.annotatedPath) } catch {}
+    const unlink = (p, kind) => {
+      if (!p) return
+      try { fs.unlinkSync(p) } catch (e) {
+        console.error('[UnlinkFail]', JSON.stringify({ itemId: row.id, kind, path: p, error: e.message }))
+      }
+    }
+    unlink(row.filePath, 'full')
+    unlink(row.thumbPath, 'thumb')
+    unlink(row.annotatedPath, 'annotated')
   }
   return deleted
+}
+
+/**
+ * 只计算将被清理的内容，不执行删除（dry-run）。
+ */
+function dryRun(inputPolicy) {
+  const current = inputPolicy ? resolvePolicy(inputPolicy) : resolvePolicy(policy)
+  if (!current.enabled) {
+    return { enabled: false, itemCount: 0, imageCount: 0, annotationCount: 0, bytesFreed: 0 }
+  }
+  const peek = db.peekCleanByPolicy(current)
+  return {
+    enabled: true,
+    itemCount: peek.itemCount,
+    imageCount: peek.imageCount,
+    annotationCount: peek.annotationCount,
+    bytesFreed: peek.bytesFreed
+  }
 }
 
 /**
@@ -87,6 +111,7 @@ module.exports = {
   getPolicy,
   resolvePolicy,
   run,
+  dryRun,
   start,
   stop,
   DEFAULT_POLICY

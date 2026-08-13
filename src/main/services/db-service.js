@@ -107,7 +107,10 @@ let dbPath = null
 
 function userDataDir() {
   if (process.env.CLIPBOARD_SHELF_TEST_ROOT) return path.resolve(process.env.CLIPBOARD_SHELF_TEST_ROOT)
-  if (process.env.CLIPBOARD_SHELF_USER_DATA) return process.env.CLIPBOARD_SHELF_USER_DATA
+  if (process.env.CLIPBOARD_SHELF_USER_DATA && process.env.CLIPBOARD_SHELF_TEST_ROOT) return path.resolve(process.env.CLIPBOARD_SHELF_USER_DATA)
+  if (process.env.CLIPBOARD_SHELF_USER_DATA) {
+    console.warn('[RuntimeIsolation] Ignoring CLIPBOARD_SHELF_USER_DATA outside test mode')
+  }
   try {
     if (electronApp) return electronApp.getPath('userData')
   } catch {}
@@ -115,13 +118,33 @@ function userDataDir() {
 }
 
 // ====== Backup ======
-function backupDatabase() {
+async function backupTo(dest) {
+  if (!db) return { ok: false, error: 'db not open' }
   try {
-    if (!dbPath || !fs.existsSync(dbPath)) return
+    fs.mkdirSync(path.dirname(dest), { recursive: true })
+    await db.backup(dest)
+    const check = new Database(dest, { readonly: true })
+    const ic = check.pragma('integrity_check', { simple: true })
+    const pageCount = check.pragma('page_count', { simple: true })
+    check.close()
+    if (ic !== 'ok') return { ok: false, error: 'integrity_check: ' + ic }
+    return { ok: true, pageCount }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+}
+
+async function backupDatabase() {
+  try {
+    if (!db || !dbPath) return
     const backupDir = path.join(userDataDir(), 'backups')
     fs.mkdirSync(backupDir, { recursive: true })
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    fs.copyFileSync(dbPath, path.join(backupDir, `shelf-${ts}.db`))
+    const r = await backupTo(path.join(backupDir, `shelf-${ts}.db`))
+    if (!r.ok) {
+      console.error('[DBService] Backup error:', r.error)
+      return
+    }
     const cfgSrc = path.join(userDataDir(), 'config.json')
     if (fs.existsSync(cfgSrc)) {
       fs.copyFileSync(cfgSrc, path.join(backupDir, `config-${ts}.json`))
@@ -130,7 +153,7 @@ function backupDatabase() {
       .filter(f => f.startsWith('shelf-') && f.endsWith('.db'))
       .sort()
     while (backups.length > 5) {
-      fs.unlinkSync(path.join(backupDir, backups.shift()))
+      try { fs.unlinkSync(path.join(backupDir, backups.shift())) } catch {}
     }
   } catch (err) {
     console.error('[DBService] Backup error:', err.message)
@@ -183,9 +206,6 @@ async function init() {
   const userData = userDataDir()
   fs.mkdirSync(userData, { recursive: true })
   dbPath = path.join(userData, 'shelf.db')
-
-  // 启动时自动备份上一份数据库和配置（保留最近 5 份）
-  backupDatabase()
 
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
@@ -253,6 +273,8 @@ async function init() {
   stmtFtsDelete = db.prepare('DELETE FROM items_fts WHERE rowid = ?')
 
   registerEventHandlers()
+  // 启动时自动备份上一份数据库和配置（Online Backup API，保留最近 5 份）
+  await backupDatabase()
   return db
 }
 
@@ -548,9 +570,15 @@ function clearNonFavorites() {
   if (ids.length > 0) eventBus.emit(Events.DB_BATCH_DELETE, { ids })
 
   for (const row of rows) {
-    if (row.filePath) try { fs.unlinkSync(row.filePath) } catch {}
-    if (row.thumbPath) try { fs.unlinkSync(row.thumbPath) } catch {}
-    if (row.annotatedPath) try { fs.unlinkSync(row.annotatedPath) } catch {}
+    const unlink = (p, kind) => {
+      if (!p) return
+      try { fs.unlinkSync(p) } catch (e) {
+        console.error('[UnlinkFail]', JSON.stringify({ itemId: row.id, kind, path: p, error: e.message }))
+      }
+    }
+    unlink(row.filePath, 'full')
+    unlink(row.thumbPath, 'thumb')
+    unlink(row.annotatedPath, 'annotated')
   }
 }
 
@@ -572,10 +600,8 @@ function cleanOld(maxItems = 2000) {
  *   - 达到上限时优先删除最旧的未收藏记录
  *   - 返回被删行（含 filePath/thumbPath），由调用方负责删除文件
  */
-function cleanByPolicy(policy = {}) {
-  if (!db) return []
-  if (policy.enabled === false) return []
-
+function collectCleanCandidates(policy = {}) {
+  if (!db) return { rows: [], ids: [] }
   const num = (v, dflt) => Number.isFinite(v) ? Math.max(0, Math.floor(v)) : dflt
   const maxItems = num(policy.maxItems, 0)
   const maxDays = num(policy.maxDays, 0)
@@ -588,7 +614,7 @@ function cleanByPolicy(policy = {}) {
   if (maxDays > 0) {
     const cutoff = now - maxDays * 24 * 60 * 60 * 1000
     for (const r of db.prepare(`
-      SELECT id, filePath, thumbPath, annotatedPath FROM items
+      SELECT id, type, filePath, thumbPath, annotatedPath FROM items
       WHERE isFavorite = 0 AND worksiteId IS NULL AND createTime < ?
     `).all(cutoff)) {
       candidates.set(r.id, r)
@@ -601,7 +627,7 @@ function cleanByPolicy(policy = {}) {
     const toDelete = count - maxItems
     if (toDelete > 0) {
       for (const r of db.prepare(`
-        SELECT id, filePath, thumbPath, annotatedPath FROM items
+        SELECT id, type, filePath, thumbPath, annotatedPath FROM items
         WHERE isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
@@ -619,7 +645,7 @@ function cleanByPolicy(policy = {}) {
     const toDelete = imageCount - maxImageItems
     if (toDelete > 0) {
       for (const r of db.prepare(`
-        SELECT id, filePath, thumbPath, annotatedPath FROM items
+        SELECT id, type, filePath, thumbPath, annotatedPath FROM items
         WHERE type = 'image' AND isFavorite = 0 AND worksiteId IS NULL
         ORDER BY createTime ASC
         LIMIT ?
@@ -628,10 +654,13 @@ function cleanByPolicy(policy = {}) {
       }
     }
   }
+  return { rows: [...candidates.values()], ids: [...candidates.keys()] }
+}
 
-  if (candidates.size === 0) return []
-  const rows = [...candidates.values()]
-  const ids = rows.map(r => r.id)
+function cleanByPolicy(policy = {}) {
+  if (!db || policy.enabled === false) return []
+  const { rows, ids } = collectCleanCandidates(policy)
+  if (rows.length === 0) return []
   const placeholders = ids.map(() => '?').join(',')
   db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...ids)
   deleteEntitiesForIds(ids)
@@ -639,6 +668,32 @@ function cleanByPolicy(policy = {}) {
   for (const id of ids) syncFtsDelete(id)
   eventBus.emit(Events.DB_BATCH_DELETE, { ids })
   return rows
+}
+
+function peekCleanByPolicy(policy = {}) {
+  if (!db || policy.enabled === false) {
+    return { itemCount: 0, imageCount: 0, annotationCount: 0, bytesFreed: 0, rows: [] }
+  }
+  const { rows, ids } = collectCleanCandidates(policy)
+  let bytes = 0
+  for (const r of rows) {
+    for (const p of [r.filePath, r.thumbPath, r.annotatedPath]) {
+      if (p && fs.existsSync(p)) bytes += fs.statSync(p).size
+    }
+  }
+  let annotationCount = 0
+  for (let i = 0; i < ids.length; i += 500) {
+    const chunk = ids.slice(i, i + 500)
+    const ph = chunk.map(() => '?').join(',')
+    annotationCount += db.prepare(`SELECT COUNT(*) c FROM annotations WHERE item_id IN (${ph})`).get(...chunk).c
+  }
+  return {
+    itemCount: rows.length,
+    imageCount: rows.filter(r => r.type === 'image').length,
+    annotationCount,
+    bytesFreed: bytes,
+    rows
+  }
 }
 
 // ====== Entities（v1.5.0 本地实体识别持久化） ======
@@ -966,7 +1021,8 @@ function decryptAllAndRebuildFts() {
 
 module.exports = {
   init, getAll, insert, remove, toggleFavorite, updateContent, updateOcrText,
-  clearNonFavorites, cleanOld, cleanByPolicy, close, save, saveImmediate,
+  clearNonFavorites, cleanOld, cleanByPolicy, collectCleanCandidates, peekCleanByPolicy,
+  backupTo, close, save, saveImmediate,
   insertEntities, markEntityState, getEntitiesByItem, deleteEntitiesForIds,
   getAllNotes, insertNote, updateNote, deleteNote, toggleNotePin,
   getDueReminders, markNoteReminded,

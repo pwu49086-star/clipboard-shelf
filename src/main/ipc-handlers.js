@@ -13,6 +13,9 @@ const { eventBus, Events } = require('./core/event-bus')
 const db = require('./services/db-service')
 const pinManager = require('./services/pin-manager')
 const encryption = require('./services/encryption-service')
+const retention = require('./services/retention')
+const backupService = require('./services/backup-service')
+const assetIntegrity = require('./services/asset-integrity')
 const { canAnnotate } = require('../shared/annotation-gate.cjs')
 
 // Config
@@ -148,9 +151,15 @@ function setup(mainWindow) {
     for (const id of ids) {
       const item = db.remove(id)
       if (item) {
-        if (item.filePath) try { fs.unlinkSync(item.filePath) } catch {}
-        if (item.thumbPath) try { fs.unlinkSync(item.thumbPath) } catch {}
-        if (item.annotatedPath) try { fs.unlinkSync(item.annotatedPath) } catch {}
+        const unlink = (p, kind) => {
+          if (!p) return
+          try { fs.unlinkSync(p) } catch (e) {
+            console.error('[UnlinkFail]', JSON.stringify({ itemId: id, kind, path: p, error: e.message }))
+          }
+        }
+        unlink(item.filePath, 'full')
+        unlink(item.thumbPath, 'thumb')
+        unlink(item.annotatedPath, 'annotated')
       }
       eventBus.emit(Events.DB_DELETE, { id })
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -164,9 +173,15 @@ function setup(mainWindow) {
   ipcMain.handle('items:delete', (event, id) => {
     const item = db.remove(id)
     if (item) {
-      if (item.filePath) try { fs.unlinkSync(item.filePath) } catch {}
-      if (item.thumbPath) try { fs.unlinkSync(item.thumbPath) } catch {}
-      if (item.annotatedPath) try { fs.unlinkSync(item.annotatedPath) } catch {}
+      const unlink = (p, kind) => {
+        if (!p) return
+        try { fs.unlinkSync(p) } catch (e) {
+          console.error('[UnlinkFail]', JSON.stringify({ itemId: id, kind, path: p, error: e.message }))
+        }
+      }
+      unlink(item.filePath, 'full')
+      unlink(item.thumbPath, 'thumb')
+      unlink(item.annotatedPath, 'annotated')
     }
     eventBus.emit(Events.DB_DELETE, { id })
     // 通知 renderer 增量删除
@@ -487,6 +502,80 @@ function setup(mainWindow) {
     clipboard.writeText(value)
     return true
   })
+
+  // ====== Backup & Recovery（v1.9.0）======
+  const backupRoot = () => path.join(app.getPath('userData'), 'backups')
+
+  ipcMain.handle('backup:list', () => backupService.listCompleteBackups(backupRoot()))
+
+  ipcMain.handle('backup:create', async () => {
+    const keep = Number.isInteger(config.backup && config.backup.keepComplete) ? config.backup.keepComplete : 3
+    const result = await backupService.createCompleteBackup({
+      backupRoot: backupRoot(),
+      userData: app.getPath('userData'),
+      appVersion: (typeof app.getVersion === 'function' && app.getVersion()) || '1.9.0',
+      maxKeep: keep
+    })
+    return result
+  })
+
+  ipcMain.handle('backup:verify', (event, dir) => {
+    if (typeof dir !== 'string' || !dir) return { ok: false, errors: ['no backup dir'] }
+    return backupService.verifyBackup(dir)
+  })
+
+  ipcMain.handle('backup:getSettings', () => ({
+    keepComplete: Number.isInteger(config.backup && config.backup.keepComplete) ? config.backup.keepComplete : 3,
+    log: backupService.readLog(backupRoot())
+  }))
+
+  ipcMain.handle('backup:setSettings', (event, s) => {
+    config.backup = config.backup || {}
+    if (Number.isInteger(s && s.keepComplete)) {
+      config.backup.keepComplete = Math.max(1, Math.min(10, s.keepComplete))
+      saveConfig()
+    }
+    return { ok: true, keepComplete: config.backup.keepComplete }
+  })
+
+  ipcMain.handle('backup:restore', async (event, dir) => {
+    if (typeof dir !== 'string' || !dir) return { ok: false, error: 'no backup dir' }
+    const userData = app.getPath('userData')
+    const prep = await backupService.prepareRestore({ backupDir: dir, userData, backupRoot: backupRoot() })
+    if (!prep.ok) return prep
+    try { db.close() } catch {}
+    try {
+      fs.writeFileSync(
+        path.join(prep.stagingDir, 'restore-pending.json'),
+        JSON.stringify({ createdAt: Date.now(), rollbackDir: prep.rollbackDir })
+      )
+      const request = {
+        parentPid: process.pid,
+        userData,
+        stagingDir: prep.stagingDir,
+        rollbackDir: prep.rollbackDir,
+        argv: process.argv.slice(1)
+      }
+      const requestPath = path.join(os.tmpdir(), 'clipboard-shelf-restore-' + Date.now() + '.json')
+      fs.writeFileSync(requestPath, JSON.stringify(request))
+      const { spawn } = require('child_process')
+      const helper = spawn(process.execPath, ['--restore-swap=' + requestPath], { detached: true, stdio: 'ignore' })
+      helper.unref()
+      app.exit(0)
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: 'restore swap failed: ' + e.message, rollbackDir: prep.rollbackDir }
+    }
+  })
+
+  ipcMain.handle('integrity:scan', (event, baseline) => {
+    if (baseline && typeof baseline === 'string') {
+      return assetIntegrity.scan({ userData: app.getPath('userData'), baseline })
+    }
+    return assetIntegrity.scan({ userData: app.getPath('userData') })
+  })
+
+  ipcMain.handle('retention:dryRun', (event, policy) => retention.dryRun(policy))
 
   // 导出 Markdown（多选输出）：保存对话框 + 写入 + 打开所在文件夹
   ipcMain.handle('output:exportMarkdown', async (event, payload) => {

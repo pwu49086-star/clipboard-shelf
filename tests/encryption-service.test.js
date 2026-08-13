@@ -6,7 +6,7 @@ const os = require('node:os')
 
 const userData = path.join(os.tmpdir(), `clipboard-shelf-enc-test-${Date.now()}`)
 fs.mkdirSync(userData, { recursive: true })
-process.env.CLIPBOARD_SHELF_USER_DATA = userData
+process.env.CLIPBOARD_SHELF_TEST_ROOT = userData
 
 const encryption = require('../src/main/services/encryption-service.js')
 const db = require('../src/main/services/db-service.js')

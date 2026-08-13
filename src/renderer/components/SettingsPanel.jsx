@@ -37,6 +37,12 @@ export default function SettingsPanel({ onBack }) {
   const [oldPw, setOldPw] = useState('')
   const [version, setVersion] = useState('')
   const [updateMsg, setUpdateMsg] = useState('')
+  const [backups, setBackups] = useState([])
+  const [backupSettings, setBackupSettings] = useState({ keepComplete: 3, log: [] })
+  const [backupMsg, setBackupMsg] = useState('')
+  const [backupBusy, setBackupBusy] = useState(false)
+  const [integrity, setIntegrity] = useState(null)
+  const [dryRun, setDryRun] = useState(null)
 
   useEffect(() => {
     if (window.api?.getHotkeys) window.api.getHotkeys().then(h => h && setHotkeys(h)).catch(() => {})
@@ -50,7 +56,49 @@ export default function SettingsPanel({ onBack }) {
     if (window.api?.getRetention) window.api.getRetention().then(r => r && setRetention(r)).catch(() => {})
     if (window.api?.getPasteOptions) window.api.getPasteOptions().then(r => r && setPasteOpts(r)).catch(() => {})
     if (window.api?.getVersion) window.api.getVersion().then(setVersion).catch(() => {})
+    if (window.api?.backupList) window.api.backupList().then(setBackups).catch(() => {})
+    if (window.api?.backupGetSettings) window.api.backupGetSettings().then(setBackupSettings).catch(() => {})
   }, [])
+
+  const fmtTime = (ts) => { try { return new Date(ts).toLocaleString() } catch { return String(ts) } }
+  const fmtSize = (n) => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1024).toFixed(0) + ' KB'
+  const refreshBackups = async () => {
+    if (window.api?.backupList) setBackups(await window.api.backupList())
+    if (window.api?.backupGetSettings) setBackupSettings(await window.api.backupGetSettings())
+  }
+  const doCompleteBackup = async () => {
+    setBackupBusy(true)
+    setBackupMsg('')
+    try {
+      const r = await window.api.backupCreate()
+      if (r && r.ok) setBackupMsg('完整备份成功')
+      else setBackupMsg('备份失败：' + ((r && r.error) || '未知错误'))
+    } catch (e) { setBackupMsg('备份失败：' + e.message) }
+    finally { setBackupBusy(false); await refreshBackups() }
+  }
+  const doVerify = async (dir) => {
+    const r = await window.api.backupVerify(dir)
+    setBackupMsg(r && r.ok ? '验证通过' : '验证失败：' + ((r && r.errors || []).join('；') || '未知'))
+  }
+  const doRestore = async (dir) => {
+    if (!window.confirm('恢复将关闭应用并替换全部数据（会自动创建当前环境回滚点）。确定继续？')) return
+    setBackupMsg('正在恢复，应用即将重启…')
+    const r = await window.api.backupRestore(dir)
+    if (r && !r.ok) setBackupMsg('恢复失败：' + ((r && r.error) || '未知'))
+  }
+  const doIntegrity = async () => {
+    const r = await window.api.integrityScan()
+    setIntegrity(r)
+  }
+  const doDryRun = async () => {
+    const r = await window.api.retentionDryRun()
+    setDryRun(r)
+  }
+  const doSetKeep = async (v) => {
+    const n = Math.max(1, Math.min(10, parseInt(v) || 3))
+    const r = await window.api.backupSetSettings({ keepComplete: n })
+    setBackupSettings(s => ({ ...s, keepComplete: (r && r.keepComplete) || n }))
+  }
 
   const startCapture = (key) => { setCaptureKey(key); setHotkeyMsg('请按下新快捷键…') }
 
@@ -195,6 +243,58 @@ export default function SettingsPanel({ onBack }) {
               <span className="slider"></span>
             </label>
           </div>
+        </div>
+
+        <div className="setting-group">
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">备份与恢复</span>
+              <span className="setting-desc">完整备份 = DB 一致快照 + 配置 + 全部图片 + 校验清单</span>
+            </div>
+            <button className="hotkey-box" onClick={doCompleteBackup} disabled={backupBusy}>{backupBusy ? '备份中…' : '立即完整备份'}</button>
+          </div>
+          {backupMsg && <div className="setting-hint">{backupMsg}</div>}
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">保留完整备份数量</span>
+              <span className="setting-desc">1–10，默认 3；新备份成功后才会清理旧备份</span>
+            </div>
+            <input className="setting-input" type="number" min={1} max={10} value={backupSettings.keepComplete} onChange={e => doSetKeep(e.target.value)} />
+          </div>
+          {(backups || []).length === 0 && <div className="setting-hint">暂无完整备份</div>}
+          {(backups || []).map(b => (
+            <div key={b.dir} className="setting-row">
+              <div className="setting-label">
+                <span className="setting-name">{fmtTime(b.createdAt)}</span>
+                <span className="setting-desc">{fmtSize(b.size)} · {b.imageCount} 张图片 · {(b.counts && b.counts.items) || 0} 条记录</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button className="hotkey-box" onClick={() => doVerify(b.dir)}>验证</button>
+                <button className="hotkey-box" onClick={() => doRestore(b.dir)}>恢复</button>
+              </div>
+            </div>
+          ))}
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">资产一致性巡检（只读）</span>
+              <span className="setting-desc">{integrity
+                ? `图片行 ${integrity.summary.imageRows} · 缺失 ${integrity.summary.fullMissing} · 孤儿 ${integrity.summary.orphanFull}`
+                : '检查 DB 与图片文件是否一致，只报告不修改'}</span>
+            </div>
+            <button className="hotkey-box" onClick={doIntegrity}>巡检</button>
+          </div>
+          <div className="setting-row">
+            <div className="setting-label">
+              <span className="setting-name">清理试运行（dry-run）</span>
+              <span className="setting-desc">{dryRun
+                ? `将删除 ${dryRun.itemCount} 条（图片 ${dryRun.imageCount}，标注 ${dryRun.annotationCount}）· 释放 ${fmtSize(dryRun.bytesFreed)}`
+                : '预览 retention 将清理的内容，不执行删除'}</span>
+            </div>
+            <button className="hotkey-box" onClick={doDryRun}>试运行</button>
+          </div>
+          {backupSettings.log && backupSettings.log.filter(l => !l.ok).length > 0 && (
+            <div className="setting-hint">最近失败：{backupSettings.log.filter(l => !l.ok).pop().error}</div>
+          )}
         </div>
 
         <div className="setting-group">

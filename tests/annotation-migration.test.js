@@ -73,7 +73,7 @@ oldDb.prepare(`
 oldDb.prepare('INSERT INTO worksites (title, createTime, updateTime) VALUES (?, ?, ?)').run('旧现场', now, now)
 oldDb.close()
 
-process.env.CLIPBOARD_SHELF_USER_DATA = userData
+process.env.CLIPBOARD_SHELF_TEST_ROOT = userData
 const db = require('../src/main/services/db-service.js')
 
 test.before(async () => {

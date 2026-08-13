@@ -1,5 +1,48 @@
 # Changelog
 
+## v1.9.0 (2026-08-14) — Backup & Recovery
+
+### P0：完整 Backup & Recovery
+
+- SQLite Online Backup API（better-sqlite3 `db.backup`）生成一致 DB 快照，WAL 事务不丢失；
+- 完整备份 = DB + config + pet-tasks + encryption.json + images（full/thumb/annotated）+ 隐私最小化 manifest；
+- 快照枚举 + 全有或全无：引用文件缺失则整轮失败并自动重试一次，绝不静默跳过；
+- staging + 原子 rename；成功 = DB 快照 + 资产复制 + manifest 生成 + 复验 + rename 全部通过；
+- 保留策略：启动 DB-only 快照保持 5 份；完整备份默认 3 份（可配置 1–10），新备份成功后才清理旧备份；
+- 恢复管线：验证 → 自动回滚点 → 关闭数据层 → staging → 再验证 → 原子替换 → 重启 → 启动完整性检查 → 失败自动回滚；
+- 修复 Windows 恢复 P0：应用自身运行中无法重命名 userData（子进程占用）→ 恢复采用“辅助进程原子交换”，实机验证通过；
+- 版本兼容：v1.5–v1.8 旧备份允许恢复，恢复后走现有幂等 migration；更高版本拒绝；
+- 加密原样备份（含 encryption.json），manifest 不含正文/OCR/实体值。
+
+### P1：Asset Integrity（只读巡检）
+
+- 输出 MISSING_FILE / ORPHAN_FILE / MISSING_ANNOTATED / ORPHAN_ANNOTATED / HASH_MISMATCH；
+- 只报告，不自动删除/修复/移动；设置面板可手动触发。
+
+### P1：破坏性操作最小加固
+
+- 所有图片 unlink 失败记录日志（路径/itemId/类型），不再静默；
+- retention / 清理支持 dry-run（数量/图片/标注/释放空间，不执行）；
+- 批量删除确认文案包含记录数与图片数。
+
+### Sandbox
+
+- `CLIPBOARD_SHELF_USER_DATA` 仅在测试模式生效，生产模式忽略并告警；
+- 标准化 `scripts/acceptance-runner.cjs`（prepare / launch / clean + fingerprint）。
+
+### 已知限制
+
+- 图片删除仍为永久 unlink（回收站化待后续版本）；
+- 完整备份为全量复制（增量/去重待 v1.9.x）；
+- 备份目录本身不加密（与生产 userData 同权限假设）；
+- 恢复必须关闭应用并自动重启。
+- 500 张真实照片最大规模性能尚未单独实测（基准：100 张 ≈ 0.6–0.8s、500 张小文件 ≈ 2.1s；210 张真实混合图 ≈ 3.4s）；
+- Restore 后备份列表按照恢复快照语义变化（恢复内容即所选快照），恢复前环境保存在回滚点中；
+- 未实现增量备份、云备份、回收站。
+- 其他既有 v1.8 限制不变（图片不进入内置备份、Entity Chip 非实时、型号精确匹配、轮询 ≤1s、孤立品牌裸词不识别等）。
+
+---
+
 ## v1.8.0 (2026-08-14) — 图片维修标注（Image Annotation）
 
 ### 核心能力

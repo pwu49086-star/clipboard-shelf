@@ -10,6 +10,47 @@ const path = require('path')
 const fs = require('fs')
 const { resolveRuntimePaths, assertIsolatedRuntime } = require('./runtime-isolation.cjs')
 
+// ====== v1.9：restore-swap 辅助进程 ======
+// 应用自身运行中无法重命名整个 userData（子进程占用文件）。恢复采用：
+// 主进程写交换请求 → 退出 → 本辅助进程等待主进程退出 → 原子交换 → 重新拉起应用。
+const swapFlag = process.argv.find(a => a.startsWith('--restore-swap='))
+if (swapFlag) {
+  const requestPath = swapFlag.slice('--restore-swap='.length)
+  try {
+    const req = JSON.parse(fs.readFileSync(requestPath, 'utf8'))
+    const deadline = Date.now() + 60000
+    const sleepBuf = new Int32Array(new SharedArrayBuffer(4))
+    while (Date.now() < deadline) {
+      try { process.kill(req.parentPid, 0) } catch { break }
+      Atomics.wait(sleepBuf, 0, 0, 500)
+    }
+    const renameRetry = (from, to) => {
+      const d = Date.now() + 20000
+      for (;;) {
+        try { fs.renameSync(from, to); return } catch (e) {
+          if (Date.now() > d) throw e
+          Atomics.wait(sleepBuf, 0, 0, 500)
+        }
+      }
+    }
+    if (fs.existsSync(req.userData + '.old')) {
+      fs.rmSync(req.userData + '.old', { recursive: true, force: true })
+    }
+    renameRetry(req.userData, req.userData + '.old')
+    renameRetry(req.stagingDir, req.userData)
+    try { fs.unlinkSync(requestPath) } catch {}
+    const child = require('child_process').spawn(process.execPath, req.argv || [], {
+      detached: true,
+      stdio: 'ignore'
+    })
+    child.unref()
+    process.exit(0)
+  } catch (e) {
+    console.error('[Restore] swap helper failed:', e.message)
+    process.exit(1)
+  }
+}
+
 // userData 目录：验收实例（CLIPBOARD_SHELF_TEST_ROOT）→ TEST_ROOT；生产 → %APPDATA%\clipboard-shelf
 const runtime = resolveRuntimePaths({ appData: app.getPath('appData') })
 if (runtime.mode === 'test') {
@@ -70,6 +111,7 @@ const encryptionService = require('./services/encryption-service')
 const retention = require('./services/retention')
 const petEngine = require('./pet/pet-engine')
 const petTasks = require('./pet-tasks')
+const backupService = require('./services/backup-service')
 
 // ====== Crash Log ======
 let logPath = path.join(app.getPath('userData'), 'crash.log')
@@ -752,6 +794,16 @@ app.whenReady().then(async () => {
     return net.fetch('file:///' + resolved)
   })
   // 初始化服务
+  // v1.9：恢复后启动完整性检查；失败自动回滚
+  try {
+    const rb = backupService.applyRollbackIfNeeded({ userData: app.getPath('userData') })
+    if (rb && rb.rolledBack) {
+      console.warn('[Restore] rolled back to pre-restore state:', JSON.stringify(rb.reason))
+    }
+  } catch (e) {
+    console.error('[Restore] rollback check error:', e.message)
+  }
+
   await db.init()
   encryptionService.init()
   ocrService.init()
