@@ -60,9 +60,9 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('v1 → v4 migration: entities/worksites/annotations tables + new columns, legacy data intact', () => {
+test('v1 → v5 migration: entities/worksites/annotations tables + new columns, legacy data intact', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 5)
   const entCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='entities'").get().c
   assert.strictEqual(entCount, 1)
   const wsCount = raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='worksites'").get().c

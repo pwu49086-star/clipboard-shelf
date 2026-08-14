@@ -90,6 +90,20 @@ export default function SettingsPanel({ onBack }) {
     const r = await window.api.integrityScan()
     setIntegrity(r)
   }
+  const doConfirmMissing = async (id) => {
+    const note = window.prompt('备注（可选，最多 200 字）', '8/11 事故永久丢失')
+    if (note === null) return
+    if (!window.confirm('确认将该图片标记为「永久缺失」？记录、OCR、实体与现场关联都会保留。')) return
+    const r = await window.api.confirmAssetMissing([id], note)
+    setBackupMsg(r && r.ok ? `已确认 ${(r.updated || []).length} 条为永久缺失` : '确认失败：' + ((r && r.error) || '未知'))
+    await doIntegrity()
+  }
+  const doRevokeMissing = async (id) => {
+    if (!window.confirm('取消「永久缺失」确认？若文件仍不存在，下次巡检会重新报告为意外缺失。')) return
+    const r = await window.api.revokeAssetMissing([id])
+    setBackupMsg(r && r.ok ? `已取消 ${(r.updated || []).length} 条确认` : '取消失败：' + ((r && r.error) || '未知'))
+    await doIntegrity()
+  }
   const doDryRun = async () => {
     const r = await window.api.retentionDryRun()
     setDryRun(r)
@@ -278,11 +292,41 @@ export default function SettingsPanel({ onBack }) {
             <div className="setting-label">
               <span className="setting-name">资产一致性巡检（只读）</span>
               <span className="setting-desc">{integrity
-                ? `图片行 ${integrity.summary.imageRows} · 缺失 ${integrity.summary.fullMissing} · 孤儿 ${integrity.summary.orphanFull}`
+                ? `图片行 ${integrity.summary.imageRows} · 意外缺失 ${integrity.summary.unexpectedMissing} · 永久缺失 ${integrity.summary.permanentMissing} · 已找回 ${integrity.summary.recovered} · 孤儿 ${integrity.summary.orphanFull}`
                 : '检查 DB 与图片文件是否一致，只报告不修改'}</span>
             </div>
             <button className="hotkey-box" onClick={doIntegrity}>巡检</button>
           </div>
+          {integrity && integrity.lists.unexpectedMissing && integrity.lists.unexpectedMissing.length > 0 && (
+            <div className="setting-hint">意外缺失（可确认永久缺失）：</div>
+          )}
+          {(integrity && integrity.lists.unexpectedMissing || []).slice(0, 30).map(item => (
+            <div key={'u' + item.itemId + item.kind} className="setting-row">
+              <div className="setting-label">
+                <span className="setting-name">{item.itemId} · {item.kind}</span>
+                <span className="setting-desc">{item.path.split(/[\\/]/).pop()}</span>
+              </div>
+              <button className="hotkey-box" onClick={() => doConfirmMissing(item.itemId)}>确认永久缺失</button>
+            </div>
+          ))}
+          {(integrity && integrity.lists.permanentMissing || []).slice(0, 30).map(item => (
+            <div key={'p' + item.itemId + item.kind} className="setting-row">
+              <div className="setting-label">
+                <span className="setting-name">{item.itemId} · {item.kind} · 永久缺失</span>
+                <span className="setting-desc">{item.path.split(/[\\/]/).pop()}{item.note ? ' · ' + item.note : ''}</span>
+              </div>
+              <button className="hotkey-box" onClick={() => doRevokeMissing(item.itemId)}>取消确认</button>
+            </div>
+          ))}
+          {(integrity && integrity.lists.recovered || []).slice(0, 30).map(item => (
+            <div key={'r' + item.itemId + item.kind} className="setting-row">
+              <div className="setting-label">
+                <span className="setting-name">{item.itemId} · {item.kind} · 已找回</span>
+                <span className="setting-desc">{item.path.split(/[\\/]/).pop()}（可取消确认）</span>
+              </div>
+              <button className="hotkey-box" onClick={() => doRevokeMissing(item.itemId)}>取消确认</button>
+            </div>
+          ))}
           <div className="setting-row">
             <div className="setting-label">
               <span className="setting-name">清理试运行（dry-run）</span>

@@ -77,6 +77,14 @@ const MIGRATIONS = [
       )`,
       'CREATE INDEX IF NOT EXISTS idx_annotations_item ON annotations(item_id)'
     ]
+  },
+  {
+    version: 5,
+    sql: [
+      "ALTER TABLE items ADD COLUMN assetState TEXT NOT NULL DEFAULT 'ok'",
+      'ALTER TABLE items ADD COLUMN assetMissingAt INTEGER',
+      "ALTER TABLE items ADD COLUMN assetMissingNote TEXT DEFAULT ''"
+    ]
   }
 ]
 
@@ -971,6 +979,45 @@ function setItemAnnotatedPath(itemId, annotatedPath) {
   return true
 }
 
+// ====== Known Missing Image Assets（v1.9.1）======
+function confirmAssetMissing(ids, note = '') {
+  if (!db || !Array.isArray(ids)) return { ok: false, error: 'invalid ids' }
+  const ints = [...new Set(ids.map(Number).filter(Number.isInteger))]
+  if (ints.length === 0) return { ok: false, error: 'no valid ids' }
+  const noteStr = String(note == null ? '' : note).slice(0, 200)
+  const audit = db.transaction((list) => {
+    const now = Date.now()
+    const upd = db.prepare("UPDATE items SET assetState = 'missing', assetMissingAt = ?, assetMissingNote = ? WHERE id = ? AND type = 'image' AND filePath IS NOT NULL")
+    const out = []
+    for (const id of list) {
+      const row = db.prepare('SELECT assetState FROM items WHERE id = ?').get(id)
+      if (!row) continue
+      const info = upd.run(now, noteStr, id)
+      if (info.changes > 0) out.push({ itemId: id, oldState: row.assetState, newState: 'missing' })
+    }
+    return out
+  })(ints)
+  return { ok: true, updated: audit }
+}
+
+function revokeAssetMissing(ids) {
+  if (!db || !Array.isArray(ids)) return { ok: false, error: 'invalid ids' }
+  const ints = [...new Set(ids.map(Number).filter(Number.isInteger))]
+  if (ints.length === 0) return { ok: false, error: 'no valid ids' }
+  const audit = db.transaction((list) => {
+    const upd = db.prepare("UPDATE items SET assetState = 'ok', assetMissingAt = NULL, assetMissingNote = '' WHERE id = ?")
+    const out = []
+    for (const id of list) {
+      const row = db.prepare('SELECT assetState FROM items WHERE id = ?').get(id)
+      if (!row) continue
+      const info = upd.run(id)
+      if (info.changes > 0) out.push({ itemId: id, oldState: row.assetState, newState: 'ok' })
+    }
+    return out
+  })(ints)
+  return { ok: true, updated: audit }
+}
+
 // ====== Close ======
 function close() {
   if (db) {
@@ -1029,6 +1076,7 @@ module.exports = {
   getWorksite, createWorksite, listWorksites, updateWorksite, deleteWorksite,
   setItemsWorksite,
   getItem, getAnnotations, replaceAnnotations, setItemAnnotatedPath, deleteAnnotationsForIds,
+  confirmAssetMissing, revokeAssetMissing,
   clearFts, reEncryptAll, decryptAllAndRebuildFts,
   MIGRATIONS
 }

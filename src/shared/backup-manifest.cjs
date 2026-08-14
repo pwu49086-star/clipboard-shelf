@@ -42,6 +42,17 @@ function buildManifest(opts) {
     ...fileMeta(i.abs),
     sha256: sha256File(i.abs)
   }))
+  const knownMissing = (opts.knownMissing || []).map(k => ({
+    itemId: k.itemId,
+    kind: k.kind,
+    file: k.file,
+    confirmedAt: k.confirmedAt || null
+  }))
+  const unexpectedMissing = (opts.unexpectedMissing || []).map(k => ({
+    itemId: k.itemId,
+    kind: k.kind,
+    file: k.file
+  }))
   return {
     format: FORMAT,
     version: MANIFEST_VERSION,
@@ -52,6 +63,9 @@ function buildManifest(opts) {
     extra,
     images,
     counts: opts.counts || {},
+    assetState: knownMissing.length > 0 ? 'incomplete' : 'complete',
+    knownMissingAssets: knownMissing,
+    unexpectedMissingAssets: unexpectedMissing,
     success: true
   }
 }

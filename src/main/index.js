@@ -65,6 +65,19 @@ if (runtime.mode === 'test') {
   app.setPath('userData', path.join(app.getPath('appData'), 'clipboard-shelf'))
 }
 
+const backupService = require('./services/backup-service')
+
+// v1.9：恢复后启动完整性检查；失败自动回滚。
+// 必须在 app.whenReady 之前执行，避免 Electron 子进程占用 userData 导致回滚 rename 失败。
+try {
+  const rb = backupService.applyRollbackIfNeeded({ userData: runtime.userData })
+  if (rb && rb.rolledBack) {
+    console.warn('[Restore] rolled back to pre-restore state:', JSON.stringify(rb.reason))
+  }
+} catch (e) {
+  console.error('[Restore] rollback check error:', e.message)
+}
+
 // ====== 自动更新（仅打包版生效） ======
 let autoUpdater = null
 try {
@@ -111,7 +124,6 @@ const encryptionService = require('./services/encryption-service')
 const retention = require('./services/retention')
 const petEngine = require('./pet/pet-engine')
 const petTasks = require('./pet-tasks')
-const backupService = require('./services/backup-service')
 
 // ====== Crash Log ======
 let logPath = path.join(app.getPath('userData'), 'crash.log')
@@ -794,16 +806,6 @@ app.whenReady().then(async () => {
     return net.fetch('file:///' + resolved)
   })
   // 初始化服务
-  // v1.9：恢复后启动完整性检查；失败自动回滚
-  try {
-    const rb = backupService.applyRollbackIfNeeded({ userData: app.getPath('userData') })
-    if (rb && rb.rolledBack) {
-      console.warn('[Restore] rolled back to pre-restore state:', JSON.stringify(rb.reason))
-    }
-  } catch (e) {
-    console.error('[Restore] rollback check error:', e.message)
-  }
-
   await db.init()
   encryptionService.init()
   ocrService.init()

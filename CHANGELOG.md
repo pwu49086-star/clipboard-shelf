@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.9.1 (2026-08-14) — Known Missing Image Assets（待实机验收）
+
+### 核心
+
+- migration v5（additive）：`items.assetState ('ok'|'missing')` + `assetMissingAt` + `assetMissingNote`；旧数据默认 `ok`，不自动标记任何缺失记录。
+- Asset Integrity 三态：UNEXPECTED_MISSING（ok+缺文件）／PERMANENT_MISSING（missing+缺文件）／RECOVERED（missing+文件找回，仅诊断不改状态）。
+- 显式「确认永久缺失 / 取消确认」：二次确认、显示数量与文件信息、写审计日志（`backups/asset-audit-log.json`，不含正文/OCR/实体值）、可逆、不删除任何历史数据。
+- Backup 三级语义：DB-only 始终可用；完整备份 = `SUCCESS (complete)`；已知缺失存在时 = `SUCCESS (incomplete)`（manifest 记录 knownMissingAssets）；意外缺失 = FAIL。
+- Verify：`PASS (complete)` / `PASS (consistent, N known missing)` / `FAIL`，并报告 unexpected/known/hash/orphan。
+- Restore：assetState 随 DB 还原；已知缺失不视为错误；恢复后重新运行完整性检查。
+- 兼容 v1.8 / v1.9.0 backup 与 DB（无 assetState 自动视为 ok）。
+
+### 已知限制
+
+- RECOVERED 只作诊断提示，不自动改回 ok；
+- 205 条生产历史缺失记录保持 `assetState='ok'`，直到用户显式确认；
+- 未做资产注册表/重挂载（后续版本）。
+
+---
+
 ## v1.9.0 (2026-08-14) — Backup & Recovery
 
 ### P0：完整 Backup & Recovery

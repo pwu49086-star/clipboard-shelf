@@ -12,7 +12,7 @@ const manifest = require('../../shared/backup-manifest.cjs')
 const integrity = require('./asset-integrity')
 
 const COMPLETE_PREFIX = 'complete-'
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 function tsName() {
   return new Date().toISOString().replace(/[:.]/g, '-')
@@ -59,6 +59,24 @@ function writeLog(backupRoot, entry) {
 function readLog(backupRoot) {
   try {
     return JSON.parse(fs.readFileSync(path.join(backupRoot, 'backup-log.json'), 'utf8'))
+  } catch {
+    return []
+  }
+}
+
+function appendAuditLog(backupRoot, entries) {
+  try {
+    const p = path.join(backupRoot, 'asset-audit-log.json')
+    const list = []
+    try { list.push(...JSON.parse(fs.readFileSync(p, 'utf8'))) } catch {}
+    for (const e of entries || []) list.push({ ...e, ts: Date.now() })
+    fs.writeFileSync(p, JSON.stringify(list.slice(-500), null, 2))
+  } catch {}
+}
+
+function readAuditLog(backupRoot) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(backupRoot, 'asset-audit-log.json'), 'utf8'))
   } catch {
     return []
   }
@@ -148,7 +166,7 @@ async function buildCompleteSnapshot({ tmpDir, userData, appVersion, schemaVersi
     return { ok: false, retryable: false, error: 'snapshot open failed: ' + e.message }
   }
   const rows = snap.prepare(
-    "SELECT id, type, filePath, thumbPath, annotatedPath FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL"
+    "SELECT id, type, filePath, thumbPath, annotatedPath, assetState, assetMissingAt FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL"
   ).all()
   const counts = {
     items: snap.prepare('SELECT COUNT(*) c FROM items').get().c,
@@ -162,13 +180,18 @@ async function buildCompleteSnapshot({ tmpDir, userData, appVersion, schemaVersi
 
   const images = []
   const missing = []
+  const knownMissing = []
   for (const r of rows) {
     for (const [kind, p] of [['full', r.filePath], ['thumb', r.thumbPath], ['annotated', r.annotatedPath]]) {
       if (!p) continue
       const base = path.basename(p)
       const src = path.join(userData, 'images', kind, base)
       if (!fs.existsSync(src)) {
-        missing.push({ itemId: r.id, kind, file: base })
+        if (r.assetState === 'missing') {
+          knownMissing.push({ itemId: r.id, kind, file: base, confirmedAt: r.assetMissingAt || null })
+        } else {
+          missing.push({ itemId: r.id, kind, file: base })
+        }
         continue
       }
       const dest = path.join(tmpDir, 'images', kind, base)
@@ -187,7 +210,9 @@ async function buildCompleteSnapshot({ tmpDir, userData, appVersion, schemaVersi
     dbPageCount: dbRes.pageCount,
     extras,
     images,
-    counts
+    counts,
+    knownMissing,
+    unexpectedMissing: missing
   })
   manifest.writeManifest(tmpDir, m)
   const fileV = manifest.verifyManifest(tmpDir, m)
@@ -235,20 +260,52 @@ function verifyBackup(backupDir, opts = {}) {
   const dbv = verifyDb(path.join(backupDir, m.db.file), schemaVersion, m.counts)
   if (!dbv.ok) return { ok: false, errors: dbv.errors }
   const errors = []
+  const known = new Map()
+  for (const k of m.knownMissingAssets || []) known.set(k.itemId + ':' + k.kind + ':' + k.file, k)
+  let knownMissing = 0
+  let unexpectedMissing = 0
   let db
   try { db = new Database(path.join(backupDir, m.db.file), { readonly: true }) } catch {}
   if (db) {
-    const rows = db.prepare("SELECT id, filePath, thumbPath, annotatedPath FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL").all()
+    const rows = db.prepare("SELECT id, filePath, thumbPath, annotatedPath, assetState FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL").all()
     db.close()
     for (const r of rows) {
       for (const [kind, p] of [['full', r.filePath], ['thumb', r.thumbPath], ['annotated', r.annotatedPath]]) {
         if (!p) continue
         const rel = kind + '/' + path.basename(p)
-        if (!fs.existsSync(path.join(backupDir, 'images', rel))) errors.push('row ' + r.id + ' missing ' + rel)
+        if (!fs.existsSync(path.join(backupDir, 'images', rel))) {
+          const key = r.id + ':' + kind + ':' + path.basename(p)
+          if (known.has(key)) knownMissing++
+          else {
+            unexpectedMissing++
+            errors.push('row ' + r.id + ' unexpected missing ' + rel)
+          }
+        }
       }
     }
   }
-  return { ok: errors.length === 0, errors, manifest: m }
+  // 备份内孤儿资产计数（不在 manifest 中但存在于备份目录）
+  const manifestPaths = new Set((m.images || []).map(i => i.path))
+  let orphan = 0
+  for (const kind of ['full', 'thumb', 'annotated']) {
+    const dir = path.join(backupDir, 'images', kind)
+    let files = []
+    try { files = fs.readdirSync(dir) } catch {}
+    for (const f of files) {
+      if (!manifestPaths.has(kind + '/' + f)) orphan++
+    }
+  }
+  const status = (m.assetState === 'incomplete' || knownMissing > 0) ? 'consistent' : 'complete'
+  return {
+    ok: errors.length === 0,
+    errors,
+    status,
+    knownMissing,
+    unexpectedMissing,
+    orphan,
+    hashMismatch: fileV.errors.filter(e => e.includes('hash mismatch')).length,
+    manifest: m
+  }
 }
 
 async function createRollback({ rollbackDir, userData }) {
@@ -336,12 +393,16 @@ function applyRollbackIfNeeded({ userData }) {
   try { marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')) } catch {}
 
   const scan = integrity.scan({ userData })
-  const critical = scan.dbUnreadable || scan.summary.fullMissing > 0 || scan.summary.annotatedMissing > 0
+  // 只有“意外缺失”（assetState=ok 但文件缺失）才是 critical；已确认永久缺失不是
+  const critical = scan.dbUnreadable || scan.summary.unexpectedMissing > 0
   if (!critical) {
     try { fs.unlinkSync(markerPath) } catch {}
     for (const suffix of ['.old', '.restore-failed']) {
       const p = userData + suffix
       if (fs.existsSync(p)) { try { fs.rmSync(p, { recursive: true, force: true }) } catch {} }
+    }
+    if (marker && marker.rollbackDir && fs.existsSync(marker.rollbackDir)) {
+      try { fs.rmSync(marker.rollbackDir, { recursive: true, force: true }) } catch {}
     }
     return { ok: true, rolledBack: false }
   }
@@ -370,6 +431,8 @@ module.exports = {
   pruneCompleteBackups,
   readLog,
   writeLog,
+  appendAuditLog,
+  readAuditLog,
   dirSize,
   SCHEMA_VERSION
 }

@@ -577,6 +577,26 @@ function setup(mainWindow) {
 
   ipcMain.handle('retention:dryRun', (event, policy) => retention.dryRun(policy))
 
+  // ====== Known Missing Image Assets（v1.9.1）======
+  ipcMain.handle('assets:confirmMissing', (event, ids, note) => {
+    const res = db.confirmAssetMissing(ids, note)
+    if (res.ok && res.updated.length) {
+      const noteStr = String(note == null ? '' : note).slice(0, 200)
+      backupService.appendAuditLog(backupRoot(), res.updated.map(u => ({ ...u, action: 'confirm', note: noteStr })))
+    }
+    return res
+  })
+
+  ipcMain.handle('assets:revokeMissing', (event, ids) => {
+    const res = db.revokeAssetMissing(ids)
+    if (res.ok && res.updated.length) {
+      backupService.appendAuditLog(backupRoot(), res.updated.map(u => ({ ...u, action: 'revoke' })))
+    }
+    return res
+  })
+
+  ipcMain.handle('assets:getAuditLog', () => backupService.readAuditLog(backupRoot()))
+
   // 导出 Markdown（多选输出）：保存对话框 + 写入 + 打开所在文件夹
   ipcMain.handle('output:exportMarkdown', async (event, payload) => {
     const content = payload && typeof payload.content === 'string' ? payload.content.trim() : ''

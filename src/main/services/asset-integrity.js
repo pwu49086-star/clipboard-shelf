@@ -20,6 +20,9 @@ function scan({ userData, baseline = null }) {
       thumbMissing: 0,
       annotatedExisting: 0,
       annotatedMissing: 0,
+      unexpectedMissing: 0,
+      permanentMissing: 0,
+      recovered: 0,
       orphanFull: 0,
       orphanThumb: 0,
       orphanAnnotated: 0,
@@ -27,6 +30,8 @@ function scan({ userData, baseline = null }) {
     },
     lists: {
       missingFiles: [],
+      permanentMissing: [],
+      recovered: [],
       orphanFiles: [],
       missingAnnotated: [],
       orphanAnnotated: [],
@@ -45,7 +50,7 @@ function scan({ userData, baseline = null }) {
   let rows = []
   try {
     rows = db.prepare(
-      "SELECT id, type, filePath, thumbPath, annotatedPath FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL"
+      "SELECT id, type, filePath, thumbPath, annotatedPath, assetState FROM items WHERE filePath IS NOT NULL OR thumbPath IS NOT NULL OR annotatedPath IS NOT NULL"
     ).all()
   } catch (e) {
     out.dbUnreadable = true
@@ -58,6 +63,7 @@ function scan({ userData, baseline = null }) {
   const referenced = { full: new Set(), thumb: new Set(), annotated: new Set() }
 
   for (const r of rows) {
+    const state = r.assetState === 'missing' ? 'missing' : 'ok'
     const targets = [
       ['full', r.filePath, 'missingFiles'],
       ['thumb', r.thumbPath, 'missingFiles'],
@@ -68,11 +74,18 @@ function scan({ userData, baseline = null }) {
       const base = path.basename(p)
       referenced[kind].add(base)
       const exists = fs.existsSync(p)
-      if (kind === 'full') exists ? out.summary.fullExisting++ : out.summary.fullMissing++
-      if (kind === 'thumb') exists ? out.summary.thumbExisting++ : out.summary.thumbMissing++
-      if (kind === 'annotated') exists ? out.summary.annotatedExisting++ : out.summary.annotatedMissing++
-      if (!exists) {
+      if (kind === 'full') { if (exists) out.summary.fullExisting++; else out.summary.fullMissing++ }
+      if (kind === 'thumb') { if (exists) out.summary.thumbExisting++; else out.summary.thumbMissing++ }
+      if (kind === 'annotated') { if (exists) out.summary.annotatedExisting++; else out.summary.annotatedMissing++ }
+      if (exists && state === 'missing') {
+        out.lists.recovered.push({ itemId: r.id, type: r.type, kind, path: p })
+        out.summary.recovered++
+      } else if (!exists && state === 'missing') {
+        out.lists.permanentMissing.push({ itemId: r.id, type: r.type, kind, path: p, note: r.assetMissingNote || '' })
+        out.summary.permanentMissing++
+      } else if (!exists) {
         out.lists[listKey].push({ itemId: r.id, type: r.type, kind, path: p })
+        out.summary.unexpectedMissing++
       }
     }
   }

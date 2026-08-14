@@ -12,7 +12,7 @@ function setup() {
     fs.mkdirSync(path.join(root, d), { recursive: true })
   }
   const db = new Database(path.join(root, 'shelf.db'))
-  db.exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, type TEXT, filePath TEXT, thumbPath TEXT, annotatedPath TEXT)`)
+  db.exec(`CREATE TABLE items (id INTEGER PRIMARY KEY, type TEXT, filePath TEXT, thumbPath TEXT, annotatedPath TEXT, assetState TEXT NOT NULL DEFAULT 'ok', assetMissingAt INTEGER, assetMissingNote TEXT DEFAULT '')`)
   const ins = db.prepare('INSERT INTO items (id, type, filePath, thumbPath, annotatedPath) VALUES (?,?,?,?,?)')
   const mk = (kind, name) => {
     const p = path.join(root, 'images', kind, name)

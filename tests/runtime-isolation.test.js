@@ -121,7 +121,7 @@ test('10: migration 仅作用于 TEST_ROOT', () => {
   const dbFile = path.join(TEST_ROOT, 'shelf.db')
   assert.ok(fs.existsSync(dbFile), 'DB 必须创建在 TEST_ROOT')
   const raw = new Database(dbFile, { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 5)
   raw.close()
   const prodFile = path.join(APP_DATA, 'clipboard-shelf', 'shelf.db')
   assert.ok(!fs.existsSync(prodFile), '生产路径不得被创建')

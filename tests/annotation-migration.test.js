@@ -85,9 +85,9 @@ test.after(() => {
   try { fs.rmSync(userData, { recursive: true, force: true }) } catch {}
 })
 
-test('v3 → v4 migration: annotations table + annotatedPath column, legacy data intact', () => {
+test('v3 → v5 migration: annotations table + annotatedPath column, legacy data intact', () => {
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 5)
   assert.strictEqual(
     raw.prepare("SELECT COUNT(*) c FROM sqlite_master WHERE type='table' AND name='annotations'").get().c,
     1
@@ -104,11 +104,11 @@ test('v3 → v4 migration: annotations table + annotatedPath column, legacy data
   assert.ok(all.some(i => i.type === 'image' && i.annotatedPath === null))
 })
 
-test('re-init is idempotent and stays v4', async () => {
+test('re-init is idempotent and stays v5', async () => {
   db.close()
   await db.init()
   const raw = new Database(path.join(userData, 'shelf.db'), { readonly: true })
-  assert.strictEqual(raw.pragma('user_version', { simple: true }), 4)
+  assert.strictEqual(raw.pragma('user_version', { simple: true }), 5)
   raw.close()
   assert.deepStrictEqual(db.getAnnotations(1), [])
 })

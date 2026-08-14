@@ -115,3 +115,15 @@ test('restore pipeline: success path clears marker and keeps data', async () => 
   assert.strictEqual(check.prepare('SELECT COUNT(*) c FROM items').get().c >= 1, true)
   check.close()
 })
+
+test('main entry: backupService require precedes startup rollback check (TDZ guard)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'index.js'), 'utf8')
+  const requireIdx = src.indexOf("require('./services/backup-service')")
+  const useIdx = src.indexOf('applyRollbackIfNeeded')
+  assert.ok(requireIdx >= 0, 'backupService require must exist in main entry')
+  assert.ok(useIdx >= 0, 'applyRollbackIfNeeded must be referenced in main entry')
+  assert.ok(
+    requireIdx < useIdx,
+    'backupService must be required before applyRollbackIfNeeded is invoked, otherwise startup check throws TDZ ReferenceError'
+  )
+})
